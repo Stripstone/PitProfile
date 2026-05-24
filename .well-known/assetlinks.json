@@ -1,0 +1,8 @@
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "com.pitprofile.twa",
+        "sha256_cert_fingerprints": ["3B:4D:FD:2A:0E:32:8C:8B:1E:1D:FA:22:B0:65:94:D6:64:0C:21:E4:BA:53:F3:C8:92:07:DC:4C:A2:E4:54:61"]
+      }
+    }]
