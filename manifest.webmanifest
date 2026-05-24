@@ -3,7 +3,7 @@
   "short_name": "PitProfile",
   "description": "A stratigraphic visualizer for field pit profiles, horizons, Munsell colors, textures, depths, and notes.",
   "id": "/",
-  "start_url": "/",
+  "start_url": "https://pitprofile.com/",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait-primary",
