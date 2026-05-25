@@ -3,7 +3,7 @@
   "short_name": "PitProfile",
   "description": "A stratigraphic visualizer for field pit profiles, horizons, Munsell colors, textures, depths, and notes.",
   "id": "/",
-  "start_url": "/",
+  "start_url": "https://pitprofile.com/",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait-primary",
@@ -33,5 +33,20 @@
       "type": "image/png",
       "purpose": "maskable"
     }
-  ]
+  ],
+  "screenshots": [
+  {
+    "src": "/assets/screenshots/pitprofile-wide.png",
+    "sizes": "1280x720",
+    "type": "image/png",
+    "form_factor": "wide",
+    "label": "PitProfile desktop stratigraphic visualizer"
+  },
+  {
+    "src": "/assets/screenshots/pitprofile-mobile.png",
+    "sizes": "750x1334",
+    "type": "image/png",
+    "label": "PitProfile mobile field profile view"
+  }
+ ]
 }
