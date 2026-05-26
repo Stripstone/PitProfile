@@ -8,6 +8,51 @@
   <meta name="application-name" content="PitProfile" />
   <meta name="theme-color" content="#e8dfc8" />
   <meta name="color-scheme" content="light" />
+  <script>
+    (function () {
+      try {
+        if (window.history && history.state && history.state.PitProfileView === 'app') {
+          var root = document.documentElement;
+          var snapshotRaw = null;
+          var saveRaw = null;
+
+          try {
+            snapshotRaw = localStorage.getItem('pitprofile-visual-snapshot-v1');
+            saveRaw = localStorage.getItem('munsell-stp-local-working-save-v1');
+          } catch (storageError) {
+            snapshotRaw = null;
+            saveRaw = null;
+          }
+
+          var hasMatchingSnapshot = false;
+          if (snapshotRaw && saveRaw) {
+            try {
+              var snapshot = JSON.parse(snapshotRaw);
+              var viewportMatches = !snapshot.viewportWidth || !snapshot.viewportHeight ||
+                (Math.abs(Number(snapshot.viewportWidth) - window.innerWidth) <= 2 &&
+                 Math.abs(Number(snapshot.viewportHeight) - window.innerHeight) <= 2);
+              hasMatchingSnapshot = !!(
+                snapshot &&
+                snapshot.app === 'PitProfile' &&
+                snapshot.kind === 'visual-snapshot' &&
+                snapshot.saveRaw === saveRaw &&
+                snapshot.shellHTML &&
+                viewportMatches
+              );
+            } catch (parseError) {
+              hasMatchingSnapshot = false;
+            }
+          }
+
+          root.classList.add('pitprofile-resume-app');
+          root.classList.add('pitprofile-transect-select-pending');
+          root.classList.add(hasMatchingSnapshot ? 'pitprofile-visual-snapshot-pending' : 'pitprofile-app-settling');
+        }
+      } catch (error) {
+        // History/local storage can be unavailable in some embedded/private contexts.
+      }
+    })();
+  </script>
   <meta property="og:title" content="PitProfile" />
   <meta property="og:description" content="A stratigraphic visualizer for field pit profiles." />
   <meta property="og:type" content="website" />
@@ -146,6 +191,50 @@
   #ob-step-2 > * {
     position: relative;
     z-index: 1;
+  }
+
+
+  /* App-refresh boot gate: either show an inert last-known-good full-shell snapshot, or hide the live shell until it has settled. */
+  html.pitprofile-resume-app #onboarding-overlay {
+    display: none;
+  }
+
+  html.pitprofile-app-settling #app-shell,
+  html.pitprofile-visual-snapshot-pending #app-shell {
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  #pitprofile-visual-snapshot {
+    display: none;
+  }
+
+  html.pitprofile-visual-snapshot-pending #pitprofile-visual-snapshot {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: block;
+    overflow: hidden;
+    background: var(--bg);
+    pointer-events: none;
+  }
+
+  html.pitprofile-visual-snapshot-pending #pitprofile-visual-snapshot::part(snapshot-root) {
+    min-height: 100vh;
+  }
+
+  html.pitprofile-app-ready #app-shell {
+    visibility: visible;
+    opacity: 1;
+  }
+
+  html.pitprofile-transect-select-pending #transectSelect {
+    color: transparent;
+  }
+
+  html.pitprofile-transect-select-pending #transectSelect option {
+    color: var(--stone-900);
   }
 
   #onboarding-overlay {
@@ -1822,6 +1911,55 @@
     </div>
   </div>
 
+  <div id="pitprofile-visual-snapshot" aria-hidden="true"></div>
+  <script>
+    (function mountPitProfileVisualSnapshot() {
+      var root = document.documentElement;
+      var host = document.getElementById('pitprofile-visual-snapshot');
+      if (!host || !root.classList.contains('pitprofile-visual-snapshot-pending')) return;
+
+      try {
+        var snapshotRaw = localStorage.getItem('pitprofile-visual-snapshot-v1');
+        var saveRaw = localStorage.getItem('munsell-stp-local-working-save-v1');
+        if (!snapshotRaw || !saveRaw) throw new Error('Missing visual snapshot or save state.');
+
+        var snapshot = JSON.parse(snapshotRaw);
+        var viewportMatches = !snapshot.viewportWidth || !snapshot.viewportHeight ||
+          (Math.abs(Number(snapshot.viewportWidth) - window.innerWidth) <= 2 &&
+           Math.abs(Number(snapshot.viewportHeight) - window.innerHeight) <= 2);
+        if (!snapshot || snapshot.saveRaw !== saveRaw || !snapshot.shellHTML || !viewportMatches) {
+          throw new Error('Visual snapshot is stale.');
+        }
+
+        var snapshotScale = Number(snapshot.containerScale);
+        var scaleCss = Number.isFinite(snapshotScale) && snapshotScale > 0
+          ? '--app-container-scale:' + snapshotScale.toFixed(3) + ';'
+          : '';
+
+        var styles = Array.from(document.querySelectorAll('style'))
+          .map(function (style) { return style.textContent || ''; })
+          .join('\n');
+
+        var shadow = host.attachShadow ? host.attachShadow({ mode: 'open' }) : null;
+        if (!shadow) throw new Error('Shadow DOM unavailable.');
+
+        shadow.innerHTML =
+          '<style>' + styles + '</style>' +
+          '<style>' +
+            ':host{display:block;min-height:100vh;background:var(--bg);overflow:hidden;' + scaleCss + '}' +
+            '#app-shell{visibility:visible !important;opacity:1 !important;pointer-events:none !important;min-height:100vh;}' +
+            '#app-shell *{animation:none !important;transition:none !important;}' +
+            '#transectSelect{color:transparent !important;}' +
+          '</style>' +
+          snapshot.shellHTML;
+      } catch (error) {
+        root.classList.remove('pitprofile-visual-snapshot-pending');
+        root.classList.add('pitprofile-app-settling');
+        host.style.display = 'none';
+      }
+    })();
+  </script>
+
   <!-- APP SHELL -->
   <div id="app-shell">
     <header class="shell-topbar">
@@ -2008,6 +2146,8 @@
     let pendingSelectionName = "";
     let pendingDownloadExport = null;
     const LOCAL_SAVE_KEY = "munsell-stp-local-working-save-v1";
+    const VISUAL_SNAPSHOT_KEY = "pitprofile-visual-snapshot-v1";
+    let visualSnapshotCaptureTimer = null;
     let pendingImportFile = null;
     let pendingImportPayload = null;
     let activeTeam = null;
@@ -2643,6 +2783,78 @@
     }
 
 
+
+    function queuePitProfileVisualSnapshotCapture() {
+      if (visualSnapshotCaptureTimer) window.clearTimeout(visualSnapshotCaptureTimer);
+      visualSnapshotCaptureTimer = window.setTimeout(capturePitProfileVisualSnapshot, 80);
+    }
+
+    function freezeFormStateForVisualSnapshot(root) {
+      root.querySelectorAll('input').forEach((input) => {
+        if (input.type === 'checkbox' || input.type === 'radio') {
+          if (input.checked) input.setAttribute('checked', '');
+          else input.removeAttribute('checked');
+        } else {
+          input.setAttribute('value', input.value || '');
+        }
+        if (input.disabled) input.setAttribute('disabled', '');
+        else input.removeAttribute('disabled');
+      });
+
+      root.querySelectorAll('textarea').forEach((textarea) => {
+        textarea.textContent = textarea.value || '';
+        if (textarea.disabled) textarea.setAttribute('disabled', '');
+        else textarea.removeAttribute('disabled');
+      });
+
+      root.querySelectorAll('select').forEach((select) => {
+        Array.from(select.options).forEach((option) => {
+          if (option.selected) option.setAttribute('selected', '');
+          else option.removeAttribute('selected');
+        });
+        if (select.disabled) select.setAttribute('disabled', '');
+        else select.removeAttribute('disabled');
+      });
+
+      root.querySelectorAll('button').forEach((button) => {
+        if (button.disabled) button.setAttribute('disabled', '');
+        else button.removeAttribute('disabled');
+      });
+    }
+
+    function capturePitProfileVisualSnapshot() {
+      visualSnapshotCaptureTimer = null;
+      try {
+        const root = document.documentElement;
+        if (root.classList.contains("pitprofile-visual-snapshot-pending")) return;
+
+        const appShell = document.querySelector("#app-shell");
+        if (!appShell) return;
+
+        const saveRaw = localStorage.getItem(LOCAL_SAVE_KEY);
+        if (!saveRaw) return;
+
+        const shellClone = appShell.cloneNode(true);
+        shellClone.querySelectorAll("script").forEach((script) => script.remove());
+        freezeFormStateForVisualSnapshot(shellClone);
+
+        const containerScale = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--app-container-scale')) || 1;
+
+        localStorage.setItem(VISUAL_SNAPSHOT_KEY, JSON.stringify({
+          app: "PitProfile",
+          kind: "visual-snapshot",
+          version: 3,
+          capturedAt: Date.now(),
+          saveRaw,
+          viewportWidth: window.innerWidth,
+          viewportHeight: window.innerHeight,
+          containerScale,
+          shellHTML: shellClone.outerHTML
+        }));
+      } catch {
+        // Visual snapshots are a paint optimization only. The saved data path remains authoritative.
+      }
+    }
 
     function localSavePayload() {
       return {
@@ -3396,6 +3608,22 @@
       }).join("");
 
       select.value = current;
+      confirmTransectSelectLabelReady();
+    }
+
+    function confirmTransectSelectLabelReady() {
+      const root = document.documentElement;
+      const select = $("transectSelect");
+      if (!select) {
+        root.classList.remove("pitprofile-transect-select-pending");
+        return;
+      }
+
+      const hasConfirmedActive = Boolean(activeTransectName && transectStore[activeTransectName] && select.value === activeTransectName);
+      const hasConfirmedDefault = !activeTransectName || !transectStore[activeTransectName];
+      if (hasConfirmedActive || hasConfirmedDefault) {
+        root.classList.remove("pitprofile-transect-select-pending");
+      }
     }
 
     function showStatus(text) {
@@ -3762,6 +3990,7 @@
       renderProfile(current);
       renderRenderDepth();
       renderRows(current);
+      queuePitProfileVisualSnapshotCapture();
     }
 
     $("addPage").addEventListener("click", () => {
@@ -3943,7 +4172,53 @@
       }
     }
 
+    function finishAppStartupReveal() {
+      const root = document.documentElement;
+      root.classList.remove('pitprofile-app-settling', 'pitprofile-visual-snapshot-pending');
+      if (typeof confirmTransectSelectLabelReady === 'function') confirmTransectSelectLabelReady();
+      root.classList.add('pitprofile-app-ready');
+      const snapshotHost = document.getElementById('pitprofile-visual-snapshot');
+      if (snapshotHost) snapshotHost.style.display = 'none';
+      if (typeof queuePitProfileVisualSnapshotCapture === 'function') queuePitProfileVisualSnapshotCapture();
+      window.setTimeout(() => root.classList.remove('pitprofile-app-ready'), 240);
+    }
+
+    function settleAppContentAfterStartup() {
+      const root = document.documentElement;
+      if (!root.classList.contains('pitprofile-app-settling') && !root.classList.contains('pitprofile-visual-snapshot-pending')) return;
+
+      // Wait for saved state restoration, generated render markup, footer parsing,
+      // and a short paint-settle window before revealing the live value-bearing app.
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          window.setTimeout(finishAppStartupReveal, root.classList.contains('pitprofile-visual-snapshot-pending') ? 80 : 220);
+        });
+      });
+    }
+
+    function resumeAppViewIfNeeded() {
+      const root = document.documentElement;
+      if (!isAppHistoryState()) {
+        root.classList.remove('pitprofile-resume-app', 'pitprofile-app-settling', 'pitprofile-app-ready', 'pitprofile-visual-snapshot-pending', 'pitprofile-transect-select-pending');
+        return;
+      }
+
+      const overlay = document.getElementById('onboarding-overlay');
+      if (overlay) {
+        overlay.classList.add('hidden');
+        overlay.style.display = 'none';
+      }
+
+      root.classList.add('pitprofile-resume-app');
+      root.classList.add('pitprofile-transect-select-pending');
+      if (!root.classList.contains('pitprofile-visual-snapshot-pending')) {
+        root.classList.add('pitprofile-app-settling');
+      }
+      settleAppContentAfterStartup();
+    }
+
     function showLanding() {
+      document.documentElement.classList.remove('pitprofile-resume-app', 'pitprofile-app-settling', 'pitprofile-app-ready', 'pitprofile-visual-snapshot-pending', 'pitprofile-transect-select-pending');
       const overlay = document.getElementById('onboarding-overlay');
       if (!overlay) return;
       obGoStep(1);
@@ -4063,6 +4338,7 @@
     // Enter key advances through fields, last field triggers Continue
     document.addEventListener('DOMContentLoaded', function() {
       ensureLandingHistoryState();
+      resumeAppViewIfNeeded();
 
       const fields = ['ob-team-name', 'ob-team-code', 'ob-member-name'];
       fields.forEach((id, i) => {
