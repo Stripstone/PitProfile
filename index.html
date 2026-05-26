@@ -11,8 +11,10 @@
   <script>
     (function () {
       try {
+        var root = document.documentElement;
+        root.classList.toggle('pitprofile-network-offline', navigator.onLine === false);
+        root.classList.toggle('pitprofile-network-online', navigator.onLine !== false);
         if (window.history && history.state && history.state.PitProfileView === 'app') {
-          var root = document.documentElement;
           var snapshotRaw = null;
           var saveRaw = null;
 
@@ -530,6 +532,54 @@
   .shell-topbar-text span { 
     font-weight: 400; 
     color: #57534e; 
+  }
+
+  .network-status {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    color: #57534e;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.01em;
+    white-space: nowrap;
+  }
+
+  .network-status-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 999px;
+    background: #16a34a;
+    box-shadow: 0 0 0 2px rgba(22, 163, 74, 0.16);
+    flex: 0 0 auto;
+  }
+
+  .network-status[data-network-state="offline"] .network-status-dot,
+  html.pitprofile-network-offline .network-status .network-status-dot {
+    background: #dc2626;
+    box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.16);
+  }
+
+  .network-status-text {
+    max-width: 64px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  @media (max-width: 520px) {
+    .network-status-text {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
   }
   
   .shell-body { 
@@ -1911,7 +1961,7 @@
     </div>
   </div>
 
-  <div id="pitprofile-visual-snapshot" aria-hidden="true"></div>
+  <div id="pitprofile-visual-snapshot" aria-hidden="true" inert></div>
   <script>
     (function mountPitProfileVisualSnapshot() {
       var root = document.documentElement;
@@ -1940,6 +1990,8 @@
           .map(function (style) { return style.textContent || ''; })
           .join('\n');
 
+        host.setAttribute('aria-hidden', 'true');
+        host.setAttribute('inert', '');
         var shadow = host.attachShadow ? host.attachShadow({ mode: 'open' }) : null;
         if (!shadow) throw new Error('Shadow DOM unavailable.');
 
@@ -1952,6 +2004,14 @@
             '#transectSelect{color:transparent !important;}' +
           '</style>' +
           snapshot.shellHTML;
+        if (shadow.querySelectorAll) {
+          const online = navigator.onLine !== false;
+          shadow.querySelectorAll('[data-network-status]').forEach((status) => {
+            status.dataset.networkState = online ? 'online' : 'offline';
+            status.setAttribute('aria-label', online ? 'Network status: online' : 'Network status: offline');
+            status.setAttribute('title', online ? 'Online' : 'Offline');
+          });
+        }
       } catch (error) {
         root.classList.remove('pitprofile-visual-snapshot-pending');
         root.classList.add('pitprofile-app-settling');
@@ -1967,6 +2027,9 @@
         <img src="assets/pitprofilelogo.png" alt="" class="shell-topbar-logo" />
         <span class="shell-topbar-text">PitProfile <span>– Stratigraphic Visualizer</span></span>
       </button>
+      <div class="network-status" data-network-status data-network-state="online" title="Online" aria-label="Network status: online" role="status">
+        <span class="network-status-dot" aria-hidden="true"></span>
+      </div>
     </header>
     <div class="shell-body">
   <main class="app">
@@ -2148,6 +2211,24 @@
     const LOCAL_SAVE_KEY = "munsell-stp-local-working-save-v1";
     const VISUAL_SNAPSHOT_KEY = "pitprofile-visual-snapshot-v1";
     let visualSnapshotCaptureTimer = null;
+
+    function updatePitProfileNetworkStatus(rootNode) {
+      const root = document.documentElement;
+      const online = navigator.onLine !== false;
+      root.classList.toggle("pitprofile-network-online", online);
+      root.classList.toggle("pitprofile-network-offline", !online);
+
+      const scope = rootNode || document;
+      if (!scope.querySelectorAll) return;
+      scope.querySelectorAll("[data-network-status]").forEach((status) => {
+        status.dataset.networkState = online ? "online" : "offline";
+        status.setAttribute("aria-label", online ? "Network status: online" : "Network status: offline");
+        status.setAttribute("title", online ? "Online" : "Offline");
+      });
+    }
+
+    window.addEventListener("online", () => updatePitProfileNetworkStatus());
+    window.addEventListener("offline", () => updatePitProfileNetworkStatus());
     let pendingImportFile = null;
     let pendingImportPayload = null;
     let activeTeam = null;
@@ -2162,6 +2243,391 @@
     const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
     const mix = (a, b, t) => Math.round(a + (b - a) * t);
     const clone = (obj) => JSON.parse(JSON.stringify(obj));
+
+
+    // ── Backend adapter + local Supabase simulation ─────────────────
+    // The app should call PitProfileBackend.rpc(...) instead of supabaseClient.rpc(...).
+    // In commit-ready/default mode this delegates to Supabase. In sim mode it uses a
+    // localStorage-backed Supabase-shaped backend for automated sync/conflict churn.
+    // Sim mode is explicit only: add ?backend=sim to the URL. No persisted localStorage
+    // mode is allowed to silently override production.
+    const SIM_DB_KEY = "pitprofile-sim-supabase-v1";
+
+    function backendModeFromUrl() {
+      try {
+        const mode = new URLSearchParams(window.location.search || "").get("backend");
+        return mode === "sim" ? "sim" : "supabase";
+      } catch {
+        return "supabase";
+      }
+    }
+
+    function getBackendMode() {
+      // Commit-ready default: always use real Supabase unless the current URL
+      // explicitly opts into the local simulator with ?backend=sim.
+      return backendModeFromUrl();
+    }
+
+    function backendUrlWithMode(mode) {
+      try {
+        const url = new URL(window.location.href);
+        if (mode === "sim") url.searchParams.set("backend", "sim");
+        else url.searchParams.delete("backend");
+        return url.toString();
+      } catch {
+        return mode === "sim" ? "?backend=sim" : window.location.pathname || "./";
+      }
+    }
+
+    function setBackendMode(mode, options = {}) {
+      const next = mode === "sim" ? "sim" : "supabase";
+      const nextUrl = backendUrlWithMode(next);
+      if (options.reload === false) {
+        try { window.history.replaceState(history.state, "", nextUrl); } catch {}
+      } else if (window.location.href !== nextUrl) {
+        window.location.href = nextUrl;
+      }
+      return next;
+    }
+
+    function stableSimHash(value) {
+      let hash = 2166136261;
+      const text = String(value || "");
+      for (let i = 0; i < text.length; i++) {
+        hash ^= text.charCodeAt(i);
+        hash = Math.imul(hash, 16777619);
+      }
+      return (hash >>> 0).toString(36);
+    }
+
+    function simNow() {
+      return new Date().toISOString();
+    }
+
+    function normalizeSimName(name, fallback = "T-01") {
+      const text = String(name || "").trim();
+      return text || fallback;
+    }
+
+    function createEmptySimDb() {
+      return {
+        version: 1,
+        settings: {
+          latencyMs: 0,
+          failNextRpc: {},
+          stalePullOnce: false,
+          duplicateRows: []
+        },
+        teams: {}
+      };
+    }
+
+    function readSimDb() {
+      try {
+        const raw = localStorage.getItem(SIM_DB_KEY);
+        const parsed = raw ? JSON.parse(raw) : null;
+        if (!parsed || parsed.version !== 1 || !parsed.teams) return createEmptySimDb();
+        parsed.settings = parsed.settings && typeof parsed.settings === "object" ? parsed.settings : createEmptySimDb().settings;
+        parsed.settings.failNextRpc = parsed.settings.failNextRpc && typeof parsed.settings.failNextRpc === "object" ? parsed.settings.failNextRpc : {};
+        parsed.settings.duplicateRows = Array.isArray(parsed.settings.duplicateRows) ? parsed.settings.duplicateRows : [];
+        return parsed;
+      } catch {
+        return createEmptySimDb();
+      }
+    }
+
+    function writeSimDb(db) {
+      try { localStorage.setItem(SIM_DB_KEY, JSON.stringify(db)); } catch {}
+      return db;
+    }
+
+    function simTeamKey(name, code) {
+      return `sim_${stableSimHash(`${normalizeSimName(name, "team").toLowerCase()}|${normalizeSimName(code, "code").toLowerCase()}`)}`;
+    }
+
+    function ensureSimTeam(db, name, code) {
+      const key = simTeamKey(name, code);
+      if (!db.teams[key]) {
+        db.teams[key] = {
+          key,
+          team_name: normalizeSimName(name, "Sim Team"),
+          team_code: normalizeSimName(code, "SIM"),
+          members: {},
+          transects: {},
+          created_at: simNow(),
+          updated_at: simNow()
+        };
+      }
+      return db.teams[key];
+    }
+
+    function findSimTeamByKey(db, teamKey) {
+      return db.teams[String(teamKey || "")] || null;
+    }
+
+    function ensureSimMember(team, memberName) {
+      const name = normalizeSimName(memberName, "Sim Member");
+      const id = `member_${stableSimHash(name.toLowerCase())}`;
+      team.members[id] = team.members[id] || { id, name, created_at: simNow() };
+      return team.members[id];
+    }
+
+    function normalizeSimPayload(name, payload) {
+      const cleanName = normalizeSimName(name);
+      const source = payload && typeof payload === "object" ? clone(payload) : {};
+      return {
+        name: String(source.name || source.transect || cleanName),
+        pageIndex: Number(source.pageIndex) || 0,
+        renderDepth: Math.max(1, Number(source.renderDepth) || DEFAULT_RENDER_DEPTH_CM),
+        pages: Array.isArray(source.pages) && source.pages.length ? source.pages.map(ensurePageShape) : [starterPageTemplate()]
+      };
+    }
+
+    function upsertSimTransect(team, memberName, transectName, payload, meta = {}) {
+      const name = normalizeSimName(transectName);
+      const member = ensureSimMember(team, memberName);
+      const prev = team.transects[name];
+      const nextVersion = Number(prev?.version || 0) + 1;
+      team.transects[name] = {
+        id: prev?.id || `transect_${stableSimHash(`${team.key}|${name}`)}`,
+        team_key: team.key,
+        transect_name: name,
+        author_name: member.name,
+        owner_member_id: member.id,
+        data: normalizeSimPayload(name, payload),
+        deleted: false,
+        deleted_at: null,
+        version: meta.version || nextVersion,
+        updated_at: meta.updated_at || simNow(),
+        created_at: prev?.created_at || simNow()
+      };
+      team.updated_at = simNow();
+      return team.transects[name];
+    }
+
+    function deleteSimTransect(team, memberName, transectName, meta = {}) {
+      const name = normalizeSimName(transectName);
+      const member = ensureSimMember(team, memberName);
+      const prev = team.transects[name];
+      team.transects[name] = {
+        id: prev?.id || `transect_${stableSimHash(`${team.key}|${name}`)}`,
+        team_key: team.key,
+        transect_name: name,
+        author_name: member.name,
+        owner_member_id: member.id,
+        data: prev?.data || normalizeSimPayload(name, null),
+        deleted: true,
+        deleted_at: meta.deleted_at || simNow(),
+        version: Number(prev?.version || 0) + 1,
+        updated_at: meta.updated_at || simNow(),
+        created_at: prev?.created_at || simNow()
+      };
+      team.updated_at = simNow();
+      return team.transects[name];
+    }
+
+    function simRowForPull(row) {
+      return {
+        transect_name: row.transect_name,
+        author_name: row.author_name,
+        owner_member_id: row.owner_member_id,
+        data: row.data ? clone(row.data) : null,
+        deleted: Boolean(row.deleted),
+        deleted_at: row.deleted_at || null,
+        updated_at: row.updated_at || null,
+        version: Number(row.version || 0)
+      };
+    }
+
+    function delay(ms) {
+      return new Promise(resolve => setTimeout(resolve, Math.max(0, Number(ms) || 0)));
+    }
+
+    const PitProfileSimBackend = {
+      async rpc(name, params = {}) {
+        const db = readSimDb();
+        const failCount = Number(db.settings.failNextRpc?.[name] || 0);
+        const latencyMs = Number(db.settings.latencyMs || 0);
+        if (latencyMs) await delay(latencyMs);
+
+        if (failCount > 0) {
+          db.settings.failNextRpc[name] = failCount - 1;
+          writeSimDb(db);
+          return { data: null, error: { message: `Simulated ${name} failure`, code: "SIM_FAILURE" } };
+        }
+
+        try {
+          if (name === "stp_v2_team_key") {
+            return { data: simTeamKey(params.p_team_name, params.p_team_code), error: null };
+          }
+
+          if (name === "stp_v2_create_or_join_team") {
+            const key = simTeamKey(params.p_team_name, params.p_team_code);
+            const created = !db.teams[key];
+            const team = ensureSimTeam(db, params.p_team_name, params.p_team_code);
+            writeSimDb(db);
+            return { data: { ok: true, created, team_name: team.team_name, team_key: key, simulated: true }, error: null };
+          }
+
+          if (name === "stp_v2_upsert_transect") {
+            const team = findSimTeamByKey(db, params.p_team_key);
+            if (!team) return { data: null, error: { message: "Sim team not found", code: "SIM_TEAM_NOT_FOUND" } };
+            const row = upsertSimTransect(team, params.p_author_name, params.p_transect_name, params.p_data);
+            writeSimDb(db);
+            return { data: simRowForPull(row), error: null };
+          }
+
+          if (name === "stp_v2_delete_transect") {
+            const team = findSimTeamByKey(db, params.p_team_key);
+            if (!team) return { data: null, error: { message: "Sim team not found", code: "SIM_TEAM_NOT_FOUND" } };
+            const row = deleteSimTransect(team, params.p_author_name, params.p_transect_name);
+            writeSimDb(db);
+            return { data: simRowForPull(row), error: null };
+          }
+
+          if (name === "stp_v2_pull_transects") {
+            const team = findSimTeamByKey(db, params.p_team_key);
+            if (!team) return { data: [], error: null };
+            const rows = Object.values(team.transects || {}).map(simRowForPull);
+            const duplicates = (db.settings.duplicateRows || []).filter(r => !r.team_key || r.team_key === team.key).map(r => simRowForPull(r));
+            if (db.settings.stalePullOnce) {
+              db.settings.stalePullOnce = false;
+              writeSimDb(db);
+              return { data: [], error: null };
+            }
+            return { data: rows.concat(duplicates), error: null };
+          }
+
+          return { data: null, error: { message: `Unknown simulated RPC: ${name}`, code: "SIM_UNKNOWN_RPC" } };
+        } catch (error) {
+          return { data: null, error: { message: error?.message || "Sim backend error", code: "SIM_ERROR", details: String(error?.stack || error) } };
+        }
+      }
+    };
+
+    const PitProfileBackend = {
+      get mode() { return getBackendMode(); },
+      setMode: setBackendMode,
+      async rpc(name, params = {}) {
+        if (getBackendMode() === "sim") {
+          return PitProfileSimBackend.rpc(name, params);
+        }
+        return supabaseClient.rpc(name, params);
+      }
+    };
+
+    function currentSimTeamKey() {
+      const name = activeTeam?.name || "Sim Team";
+      const code = activeTeam?.code || "SIM";
+      return simTeamKey(name, code);
+    }
+
+    function currentSnapshotPayloadForSim(name = activeTransectName || contextLabel || "T-01") {
+      return transectPayload(normalizeSimName(name), {
+        name: normalizeSimName(name),
+        pageIndex,
+        renderDepth,
+        pages
+      });
+    }
+
+    window.PitProfileBackend = PitProfileBackend;
+    window.PitProfileSim = {
+      mode: () => getBackendMode(),
+      setMode: setBackendMode,
+      simUrl() { return backendUrlWithMode("sim"); },
+      supabaseUrl() { return backendUrlWithMode("supabase"); },
+      use() { return setBackendMode("sim"); },
+      useSupabase() { return setBackendMode("supabase"); },
+      reset() {
+        const db = createEmptySimDb();
+        writeSimDb(db);
+        return db;
+      },
+      dump() { return readSimDb(); },
+      dumpLocal() {
+        return {
+          activeTeam: clone(activeTeam),
+          activeTransectName,
+          contextLabel,
+          pageIndex,
+          renderDepth,
+          dirtyTransect,
+          transectStore: clone(transectStore),
+          deletedTransects: clone(deletedTransects),
+          deletedTransectNames: [...deletedTransectSet()]
+        };
+      },
+      setLatency(ms) {
+        const db = readSimDb();
+        db.settings.latencyMs = Math.max(0, Number(ms) || 0);
+        writeSimDb(db);
+        return db.settings.latencyMs;
+      },
+      failNextRpc(name, count = 1) {
+        const db = readSimDb();
+        db.settings.failNextRpc[name] = Math.max(1, Number(count) || 1);
+        writeSimDb(db);
+        return clone(db.settings.failNextRpc);
+      },
+      stalePullOnce() {
+        const db = readSimDb();
+        db.settings.stalePullOnce = true;
+        writeSimDb(db);
+        return true;
+      },
+      createTeam({ teamName = "Sim Team", teamCode = "SIM", members = ["You", "Maya", "Jordan"] } = {}) {
+        const db = readSimDb();
+        const team = ensureSimTeam(db, teamName, teamCode);
+        for (const member of members) ensureSimMember(team, member);
+        writeSimDb(db);
+        return clone(team);
+      },
+      saveAsMember({ teamName = activeTeam?.name || "Sim Team", teamCode = activeTeam?.code || "SIM", member = "Maya", transectName = "Remote T-01", payload = null } = {}) {
+        const db = readSimDb();
+        const team = ensureSimTeam(db, teamName, teamCode);
+        const row = upsertSimTransect(team, member, transectName, payload || currentSnapshotPayloadForSim(transectName));
+        writeSimDb(db);
+        return simRowForPull(row);
+      },
+      editAsMember({ teamName = activeTeam?.name || "Sim Team", teamCode = activeTeam?.code || "SIM", member = "Maya", transectName = activeTransectName || contextLabel || "T-01", patch = {} } = {}) {
+        const db = readSimDb();
+        const team = ensureSimTeam(db, teamName, teamCode);
+        const existing = team.transects[normalizeSimName(transectName)];
+        const nextPayload = Object.assign({}, normalizeSimPayload(transectName, existing?.data || currentSnapshotPayloadForSim(transectName)), clone(patch));
+        const row = upsertSimTransect(team, member, transectName, nextPayload);
+        writeSimDb(db);
+        return simRowForPull(row);
+      },
+      deleteAsMember({ teamName = activeTeam?.name || "Sim Team", teamCode = activeTeam?.code || "SIM", member = "Maya", transectName = activeTransectName || contextLabel || "T-01" } = {}) {
+        const db = readSimDb();
+        const team = ensureSimTeam(db, teamName, teamCode);
+        const row = deleteSimTransect(team, member, transectName);
+        writeSimDb(db);
+        return simRowForPull(row);
+      },
+      fabricateConflict({ teamName = activeTeam?.name || "Sim Team", teamCode = activeTeam?.code || "SIM", member = "Maya", transectName = activeTransectName || contextLabel || "T-01", remotePatch = {} } = {}) {
+        return this.editAsMember({ teamName, teamCode, member, transectName, patch: remotePatch });
+      },
+      fabricateDuplicateRows({ teamName = activeTeam?.name || "Sim Team", teamCode = activeTeam?.code || "SIM", member = "Maya", transectName = activeTransectName || contextLabel || "T-01", payload = null } = {}) {
+        const db = readSimDb();
+        const team = ensureSimTeam(db, teamName, teamCode);
+        const row = upsertSimTransect(team, member, transectName, payload || currentSnapshotPayloadForSim(transectName));
+        db.settings.duplicateRows.push(Object.assign({}, row, { id: `${row.id}_duplicate_${Date.now()}`, version: Number(row.version || 0) - 1 }));
+        writeSimDb(db);
+        return db.settings.duplicateRows.map(simRowForPull);
+      },
+      clearDuplicateRows() {
+        const db = readSimDb();
+        db.settings.duplicateRows = [];
+        writeSimDb(db);
+        return true;
+      },
+      async pullCurrentTeam() {
+        return PitProfileBackend.rpc("stp_v2_pull_transects", { p_team_key: currentSimTeamKey() });
+      }
+    };
+
 
     function parsePositiveCm(value) {
       const match = String(value).match(/\d+(?:\.\d+)?/);
@@ -2828,6 +3294,8 @@
         const root = document.documentElement;
         if (root.classList.contains("pitprofile-visual-snapshot-pending")) return;
 
+        updatePitProfileNetworkStatus();
+
         const appShell = document.querySelector("#app-shell");
         if (!appShell) return;
 
@@ -2930,7 +3398,7 @@
 
     async function teamKeyFor(name, code) {
       syncDiag("team key requested");
-      const { data, error } = await supabaseClient.rpc("stp_v2_team_key", {
+      const { data, error } = await PitProfileBackend.rpc("stp_v2_team_key", {
         p_team_name: name,
         p_team_code: code
       });
@@ -2998,7 +3466,7 @@
 
       try {
         syncDiag("create/join requested", { teamName: name, member });
-        const { data, error } = await supabaseClient.rpc("stp_v2_create_or_join_team", {
+        const { data, error } = await PitProfileBackend.rpc("stp_v2_create_or_join_team", {
           p_team_name: name,
           p_team_code: code
         });
@@ -3091,18 +3559,30 @@
 
 
     async function pushLocalToTeam(teamKey) {
-      const names = Object.keys(transectStore);
+      const pendingDeletes = deletedTransectSet();
+      const deletedNames = [];
+
+      // Delete tombstones are local write intent. If a stale in-memory snapshot still
+      // contains that name, prefer the delete instead of uploading then deleting it.
+      for (const name of [...pendingDeletes]) {
+        if (transectStore[name]) {
+          delete transectStore[name];
+          syncDiag("local tombstone suppressed stale upload", { name });
+        }
+      }
+
+      const names = Object.keys(transectStore).filter(name => !pendingDeletes.has(name));
       let uploaded = 0;
       let tombstones = 0;
-      syncDiag("push started", { transects: names.length, tombstones: deletedTransectSet().size });
+      syncDiag("push started", { transects: names.length, tombstones: pendingDeletes.size });
 
-      if (!names.length && !deletedTransectSet().size) {
-        return { uploaded, tombstones };
+      if (!names.length && !pendingDeletes.size) {
+        return { uploaded, tombstones, deletedNames };
       }
 
       for (const name of names) {
         const payload = transectPayload(name, transectStore[name]);
-        const { error } = await supabaseClient.rpc("stp_v2_upsert_transect", {
+        const { error } = await PitProfileBackend.rpc("stp_v2_upsert_transect", {
           p_team_key: teamKey,
           p_author_name: activeTeam.member,
           p_transect_name: name,
@@ -3119,9 +3599,8 @@
         syncDiag("uploaded transect", { name });
       }
 
-      const pendingDeletes = deletedTransectSet();
       for (const name of [...pendingDeletes]) {
-        const { error } = await supabaseClient.rpc("stp_v2_delete_transect", {
+        const { error } = await PitProfileBackend.rpc("stp_v2_delete_transect", {
           p_team_key: teamKey,
           p_author_name: activeTeam.member,
           p_transect_name: name
@@ -3134,16 +3613,17 @@
 
         pendingDeletes.delete(name);
         saveDeletedTransectSet(pendingDeletes);
+        deletedNames.push(name);
         tombstones += 1;
       }
 
-      syncDiag("push complete", { uploaded, tombstones });
-      return { uploaded, tombstones };
+      syncDiag("push complete", { uploaded, tombstones, deletedNames });
+      return { uploaded, tombstones, deletedNames };
     }
 
     async function pullTeamRows(teamKey) {
       syncDiag("pull requested");
-      const { data, error } = await supabaseClient.rpc("stp_v2_pull_transects", {
+      const { data, error } = await PitProfileBackend.rpc("stp_v2_pull_transects", {
         p_team_key: teamKey
       });
       if (error) {
@@ -3167,21 +3647,62 @@
       return JSON.stringify(a) === JSON.stringify(b);
     }
 
-    function computeSyncDiff(localStore, localTombstoneSet, remoteRows) {
+    function remoteRowSortValue(row) {
+      const version = Number(row?.version || 0);
+      const time = Date.parse(row?.updated_at || row?.deleted_at || "") || 0;
+      return { version, time, deleted: row?.deleted ? 1 : 0 };
+    }
+
+    function shouldPreferRemoteRow(candidate, current) {
+      if (!current) return true;
+      const a = remoteRowSortValue(candidate);
+      const b = remoteRowSortValue(current);
+      if (a.version !== b.version) return a.version > b.version;
+      if (a.time !== b.time) return a.time > b.time;
+      return a.deleted > b.deleted;
+    }
+
+    function collapseRemoteRowsByTransect(remoteRows) {
+      const byName = new Map();
+      for (const row of remoteRows || []) {
+        const name = String(row?.transect_name || "").trim();
+        if (!name) continue;
+        if (shouldPreferRemoteRow(row, byName.get(name))) {
+          byName.set(name, row);
+        }
+      }
+      return [...byName.values()];
+    }
+
+    function computeSyncDiff(localStore, localTombstoneSet, remoteRows, options = {}) {
       const autoMerge = [];
       const conflicts = [];
+      const selfName = String(options.selfMember || activeTeam?.member || "").trim();
+      const justDeleted = options.justDeleted instanceof Set ? options.justDeleted : new Set(options.justDeleted || []);
 
-      for (const row of remoteRows) {
+      for (const row of collapseRemoteRowsByTransect(remoteRows)) {
         const name          = row.transect_name;
         const localHas      = Boolean(localStore[name]);
         const localTombstoned = localTombstoneSet.has(name);
+        const remoteAuthor = String(row?.author_name || "").trim();
+        const remoteDeletedBySelf = Boolean(row.deleted && selfName && remoteAuthor === selfName);
+        const remoteDeleteAlreadyAccountedFor = Boolean(localTombstoned || justDeleted.has(name) || remoteDeletedBySelf);
 
         if (row.deleted) {
-          if (localHas && !localTombstoned) {
-            // Teammate deleted something we still have
-            conflicts.push({ type: "remote-delete", transectName: name });
+          if (remoteDeleteAlreadyAccountedFor) {
+            if (localHas) {
+              // Self-authored or currently-pushed deletes are authoritative local intent, not teammate conflicts.
+              delete localStore[name];
+              syncDiag("ignored self/local delete echo", { name, author: remoteAuthor });
+            }
+            continue;
           }
-          // Already gone or we deleted it — no-op
+
+          if (localHas) {
+            // A different teammate deleted something we still have.
+            conflicts.push({ type: "remote-delete", transectName: name, authorName: remoteAuthor || "teammate" });
+          }
+          // Already gone locally — no-op
           continue;
         }
 
@@ -3376,7 +3897,7 @@
       $("conflictProgress").textContent = `${index + 1} of ${total}`;
       const choice = await renderConflictModal({
         title:   `${conflict.transectName} · deleted remotely`,
-        body:    "A teammate deleted this transect. You still have it locally.",
+        body:    `${conflict.authorName || "A teammate"} deleted this transect. You still have it locally.`,
         diffRows: null,
         buttons: [
           { choice: "keep",   label: "Keep mine", primary: true },
@@ -3385,10 +3906,22 @@
       });
 
       if (choice === "theirs") {
-        delete transectStore[conflict.transectName];
+        const deletedName = conflict.transectName;
+        delete transectStore[deletedName];
         const ts = deletedTransectSet();
-        ts.add(conflict.transectName);
+        ts.add(deletedName);
         saveDeletedTransectSet(ts);
+
+        const currentName = currentTransectName();
+        if (activeTransectName === deletedName || contextLabel === deletedName || currentName === deletedName) {
+          activeTransectName = "";
+          contextLabel = "T-01";
+          pages = [starterPageTemplate()];
+          pageIndex = 0;
+          renderDepth = DEFAULT_RENDER_DEPTH_CM;
+          dirtyTransect = false;
+          pendingSelectionName = "";
+        }
       }
     }
 
@@ -3427,13 +3960,19 @@
 
         const teamKey = await teamKeyFor(activeTeam.name, activeTeam.code);
 
+        const syncSessionDeletedNames = new Set();
+
         async function pullAndDiff(stage) {
           const rows = await pullTeamRows(teamKey);
-          const diff = computeSyncDiff(transectStore, deletedTransectSet(), rows);
+          const diff = computeSyncDiff(transectStore, deletedTransectSet(), rows, {
+            selfMember: activeTeam.member,
+            justDeleted: syncSessionDeletedNames
+          });
           syncDiag(`${stage} diff`, {
             rows: rows.length,
             autoMerge: diff.autoMerge.length,
-            conflicts: diff.conflicts.length
+            conflicts: diff.conflicts.length,
+            justDeleted: [...syncSessionDeletedNames]
           });
           return { rows, ...diff };
         }
@@ -3443,6 +3982,7 @@
           saveLocalWorkingState();
           refreshTransectDropdown();
           const pushed = await pushLocalToTeam(teamKey);
+          for (const name of pushed.deletedNames || []) syncSessionDeletedNames.add(name);
           syncDiag(`${stage} push complete`, pushed);
           return pushed;
         }
@@ -4128,6 +4668,7 @@
     });
 
     restoreLocalWorkingState();
+    updatePitProfileNetworkStatus();
     updateTeamDisplay();
     render();
   </script>
