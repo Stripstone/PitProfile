@@ -741,10 +741,11 @@
     display: flex;
     align-items: center;
     gap: 4px;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
   }
 
   .topbtn {
+    flex: 0 0 auto;
     min-height: 34px;
     display: inline-grid;
     place-items: center;
@@ -756,6 +757,38 @@
     font-weight: 900;
     box-shadow: 0 1px 5px rgba(0, 0, 0, 0.08);
     color: var(--stone-900);
+  }
+
+  .stp-jump-input {
+    flex: 0 0 auto;
+    width: 34px;
+    min-width: 34px;
+    min-height: 34px;
+    border: 0;
+    border-radius: 9px;
+    background: #ffffff;
+    padding: 6px 6px;
+    font-size: 13px;
+    line-height: 1;
+    font-weight: 900;
+    text-align: center;
+    color: var(--stone-900);
+    box-shadow: 0 1px 5px rgba(0, 0, 0, 0.08);
+    outline: none;
+  }
+
+  .stp-jump-input:focus {
+    box-shadow: 0 0 0 2px rgba(112, 83, 53, 0.18), 0 1px 5px rgba(0, 0, 0, 0.08);
+  }
+
+  .stp-jump-input::-webkit-outer-spin-button,
+  .stp-jump-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+
+  .stp-jump-input[type="number"] {
+    -moz-appearance: textfield;
   }
 
   .topselect {
@@ -1979,6 +2012,14 @@
       font-size: 14px;
       border-radius: 11px;
     }
+    .stp-jump-input {
+      width: 38px;
+      min-width: 38px;
+      min-height: 36px;
+      padding: 7px 5px;
+      font-size: 14px;
+      border-radius: 11px;
+    }
     #syncTeam {
       width: 76px;
     }
@@ -2326,6 +2367,15 @@
           <button class="topbtn" id="removePage">−</button>
           <button class="topbtn" id="addPage">+</button>
           <button class="topbtn" id="prevPage">←</button>
+          <input
+            id="stpJumpInput"
+            class="stp-jump-input"
+            value="1"
+            inputmode="numeric"
+            pattern="[0-9]*"
+            aria-label="Go to STP number"
+            autocomplete="off"
+          />
           <button class="topbtn" id="nextPage">→</button>
         </div>
       </header>
@@ -3674,12 +3724,12 @@
         contextLabel = String(saved.contextLabel || activeTransectName || "T-01");
         renderDepth = Math.max(1, Number(saved.renderDepth) || DEFAULT_RENDER_DEPTH_CM);
         dirtyTransect = Boolean(saved.dirtyTransect);
-        pruneDefaultStarterTransectFromStore();
+        ensureDefaultTransectAvailable();
 
         if (!dirtyTransect && activeTransectName && transectStore[activeTransectName]) {
           const snapshot = transectStore[activeTransectName];
           pages = clone(snapshot.pages).map(ensurePageShape);
-          pageIndex = 0; // always land on STP 1 when entering a transect
+          pageIndex = clamp(Number(saved.pageIndex ?? snapshot.pageIndex) || 0, 0, pages.length - 1);
           renderDepth = Math.max(1, Number(snapshot.renderDepth) || DEFAULT_RENDER_DEPTH_CM);
           contextLabel = String(snapshot.name || snapshot.transect || activeTransectName || contextLabel || "T-01");
         } else if (Array.isArray(saved.pages) && saved.pages.length) {
@@ -3770,6 +3820,11 @@
       clearActiveTeamSession();
       hideTeamJoinPanel();
       showStatus("Left team.");
+    }
+
+    function requestLeaveTeam() {
+      if (!activeTeam?.name) return;
+      setPending("leave-team", `Leave ${activeTeam.name}? Local transects will stay on this device, but team sync will stop until you join again.`);
     }
 
     function showTeamJoinPanel() {
@@ -3909,7 +3964,31 @@
       if (!isDefaultStarterTransect("T-01", transectStore["T-01"])) return false;
       delete transectStore["T-01"];
       if (activeTransectName === "T-01") activeTransectName = "";
-      // default starter transect pruned from sync store (expected after list reset)
+      // Legacy helper retained for compatibility; production UX keeps a saved T-01 starter.
+      return true;
+    }
+
+    function ensureDefaultTransectAvailable() {
+      if (transectStore && Object.keys(transectStore).length) return false;
+
+      const starter = starterPageTemplate();
+      contextLabel = "T-01";
+      activeTransectName = "T-01";
+      pages = [starterPageTemplate()];
+      pageIndex = 0;
+      renderDepth = DEFAULT_RENDER_DEPTH_CM;
+      transectStore = {
+        "T-01": {
+          name: "T-01",
+          pageIndex: 0,
+          renderDepth: DEFAULT_RENDER_DEPTH_CM,
+          pages: [starter]
+        }
+      };
+      const deletedSet = deletedTransectSet();
+      deletedSet.delete("T-01");
+      saveDeletedTransectSet(deletedSet);
+      dirtyTransect = false;
       return true;
     }
 
@@ -4181,7 +4260,12 @@
       });
 
       if (choice === "theirs") {
-        transectStore[conflict.transectName] = transectPayload(conflict.transectName, conflict.remoteSnapshot);
+        const remotePayload = transectPayload(conflict.transectName, conflict.remoteSnapshot);
+        remotePayload.pageIndex = 0;
+        transectStore[conflict.transectName] = remotePayload;
+        if (activeTransectName === conflict.transectName || contextLabel === conflict.transectName) {
+          pageIndex = 0;
+        }
 
       } else if (choice === "merge") {
         // Auto-add new remote pages first
@@ -4313,7 +4397,7 @@
         return;
       }
 
-      pruneDefaultStarterTransectFromStore();
+      ensureDefaultTransectAvailable();
       pendingAction = null;
 
       try {
@@ -4350,7 +4434,22 @@
 
         if (joinLoadOnly) {
           const { rows, autoMerge, conflicts } = await pullAndDiff("join-load");
+          const hadActiveBeforeJoinLoad = Boolean(activeTransectName && transectStore[activeTransectName]);
           if (autoMerge.length) applySyncAutoMerges(autoMerge);
+
+          if (!hadActiveBeforeJoinLoad) {
+            const names = Object.keys(transectStore).sort(naturalTransectSort);
+            const firstRemoteName = autoMerge.find(item => item.type === "add-transect" && transectStore[item.transectName])?.transectName;
+            const openName = firstRemoteName || names[0];
+            if (openName && transectStore[openName]) {
+              applyTransectSnapshot(openName, transectStore[openName], { resetToFirstPage: true });
+            }
+          } else {
+            pageIndex = 0;
+            if (activeTransectName && transectStore[activeTransectName]) {
+              transectStore[activeTransectName].pageIndex = 0;
+            }
+          }
 
           saveLocalWorkingState();
           refreshTransectDropdown();
@@ -4436,11 +4535,6 @@
       const name = currentTransectName();
       contextLabel = name || contextLabel || "T-01";
 
-      const stpNumber = parseInt($("stpInput")?.value || page().id, 10);
-      if (stpNumber > 0) {
-        pages = pages.map((p, i) => i === pageIndex ? { ...p, id: stpNumber } : p);
-      }
-
       return {
         name: contextLabel,
         pageIndex,
@@ -4449,12 +4543,13 @@
       };
     }
 
-    function applyTransectSnapshot(name, snapshot) {
+    function applyTransectSnapshot(name, snapshot, options = {}) {
       if (!snapshot || !Array.isArray(snapshot.pages) || !snapshot.pages.length) return false;
 
+      const resetToFirstPage = Boolean(options && options.resetToFirstPage);
       contextLabel = String(snapshot.name || snapshot.transect || name || "T-01");
       pages = clone(snapshot.pages).map(ensurePageShape);
-      pageIndex = clamp(Number(snapshot.pageIndex) || 0, 0, pages.length - 1);
+      pageIndex = resetToFirstPage ? 0 : clamp(Number(snapshot.pageIndex) || 0, 0, pages.length - 1);
       renderDepth = Math.max(1, Number(snapshot.renderDepth) || DEFAULT_RENDER_DEPTH_CM);
       activeTransectName = contextLabel;
       dirtyTransect = false;
@@ -4505,6 +4600,7 @@
       const scroll = $("transectDropdownScroll");
       if (!scroll) return;
 
+      ensureDefaultTransectAvailable();
       const names = Object.keys(transectStore).sort(naturalTransectSort);
 
       if (!names.length) {
@@ -4633,7 +4729,13 @@
     }
 
     function showStatus(text) {
-      setPending("status", text);
+      pendingAction = { type: "status", text };
+      renderConfirm();
+      setTimeout(() => {
+        if (pendingAction && pendingAction.type === "status" && pendingAction.text === text) {
+          renderConfirm();
+        }
+      }, 0);
     }
 
     function addCurrentTransect(forceReplace = false) {
@@ -4687,7 +4789,7 @@
       pendingAction = null;
 
       if (remaining.length) {
-        applyTransectSnapshot(remaining[0], transectStore[remaining[0]]);
+        applyTransectSnapshot(remaining[0], transectStore[remaining[0]], { resetToFirstPage: true });
       } else {
         // Last transect deleted — seed a saved T-01 default
         contextLabel = "T-01";
@@ -4752,14 +4854,14 @@
         dirtyTransect = false;
       }
 
-      applyTransectSnapshot(name, transectStore[name]);
+      applyTransectSnapshot(name, transectStore[name], { resetToFirstPage: true });
     }
 
     function confirmSwitchTransect() {
       const name = pendingSelectionName;
       pendingSelectionName = "";
       if (name && transectStore[name]) {
-        applyTransectSnapshot(name, transectStore[name]);
+        applyTransectSnapshot(name, transectStore[name], { resetToFirstPage: true });
       } else {
         pendingAction = null;
         render();
@@ -4823,7 +4925,7 @@
         const active = normalized.active && transectStore[normalized.active] ? normalized.active : names[0];
 
         if (active) {
-          applyTransectSnapshot(active, transectStore[active]);
+          applyTransectSnapshot(active, transectStore[active], { resetToFirstPage: true });
         } else {
           activeTransectName = "";
           refreshTransectDropdown();
@@ -4845,12 +4947,13 @@
       });
 
       const names = Object.keys(transectStore).sort(naturalTransectSort);
+      const previousActiveName = activeTransectName;
       const active = activeTransectName && transectStore[activeTransectName]
         ? activeTransectName
         : names[0];
 
       if (active && transectStore[active]) {
-        applyTransectSnapshot(active, transectStore[active]);
+        applyTransectSnapshot(active, transectStore[active], { resetToFirstPage: active !== previousActiveName });
       } else {
         refreshTransectDropdown();
         render();
@@ -4979,6 +5082,8 @@
           yes.textContent = "Remove";  no.textContent = "Cancel"; no.style.display = "";
         } else if (pendingAction.type === "clear-all-transects") {
           yes.textContent = "Clear All"; no.textContent = "Cancel"; no.style.display = "";
+        } else if (pendingAction.type === "leave-team") {
+          yes.textContent = "Leave"; no.textContent = "Cancel"; no.style.display = "";
         } else if (pendingAction.type === "switch-transect") {
           yes.textContent = "Discard"; no.textContent = "Cancel"; no.style.display = "";
         } else if (pendingAction.type === "save-file-dirty") {
@@ -4999,6 +5104,114 @@
       });
     }
 
+    function currentStpLabel() {
+      return page()?.id || 1;
+    }
+
+    function parsePositiveWholeStp(raw) {
+      const text = String(raw || "").trim();
+      const value = Number(text);
+      return text !== "" && Number.isInteger(value) && value > 0 ? value : null;
+    }
+
+    function sortPagesByStpKeepingPage(selectedPage) {
+      const sorted = pages
+        .map((candidate, originalIndex) => ({ candidate, originalIndex }))
+        .sort((a, b) => {
+          const aId = Number(a.candidate?.id) || 0;
+          const bId = Number(b.candidate?.id) || 0;
+          return (aId - bId) || (a.originalIndex - b.originalIndex);
+        })
+        .map((entry) => entry.candidate);
+
+      pages = sorted;
+      const selectedIndex = pages.indexOf(selectedPage);
+      pageIndex = selectedIndex >= 0 ? selectedIndex : clamp(pageIndex, 0, pages.length - 1);
+    }
+
+    function commitCurrentStpNumberInput() {
+      const stpInput = $("stpInput");
+      if (!stpInput) return true;
+
+      const current = page();
+      const currentId = Number(current?.id) || 1;
+      const target = parsePositiveWholeStp(stpInput.value);
+
+      if (!target) {
+        stpInput.value = String(currentId);
+        showStatus("Enter a whole STP number.");
+        return false;
+      }
+
+      if (target === currentId) {
+        stpInput.value = String(currentId);
+        return true;
+      }
+
+      const duplicateIndex = pages.findIndex((candidate, index) => {
+        return index !== pageIndex && Number(candidate?.id) === target;
+      });
+
+      if (duplicateIndex >= 0) {
+        stpInput.value = String(currentId);
+        showStatus(`STP ${target} already exists.`);
+        return false;
+      }
+
+      const updatedPage = { ...current, id: target };
+      pages = pages.map((candidate, index) => index === pageIndex ? updatedPage : candidate);
+      sortPagesByStpKeepingPage(updatedPage);
+      dirtyTransect = true;
+      pendingAction = null;
+      revealArtifactLabels();
+      render();
+      return true;
+    }
+
+    function commitStpJumpInput() {
+      const jumpInput = $("stpJumpInput");
+      if (!jumpInput) return;
+
+      const target = parsePositiveWholeStp(jumpInput.value);
+      const validWholeNumber = Boolean(target);
+      const targetIndex = validWholeNumber
+        ? pages.findIndex((candidate) => Number(candidate?.id) === target)
+        : -1;
+
+      if (targetIndex < 0) {
+        jumpInput.value = String(currentStpLabel());
+        showStatus(validWholeNumber ? `STP ${target} does not exist.` : "Enter an existing STP number.");
+        return;
+      }
+
+      if (targetIndex === pageIndex) {
+        jumpInput.value = String(currentStpLabel());
+        return;
+      }
+
+      pageIndex = targetIndex;
+      revealArtifactLabels();
+      pendingAction = null;
+      render();
+    }
+
+    function bindStpJumpInput(current) {
+      const jumpInput = $("stpJumpInput");
+      if (!jumpInput) return;
+      if (document.activeElement !== jumpInput) jumpInput.value = String(current.id);
+      if (!jumpInput._bound) {
+        jumpInput._bound = true;
+        jumpInput.addEventListener("blur", commitStpJumpInput);
+        jumpInput.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") jumpInput.blur();
+          if (e.key === "Escape") {
+            jumpInput.value = String(currentStpLabel());
+            jumpInput.blur();
+          }
+        });
+      }
+    }
+
     function bindTopBarInputs(current) {
       const ctxLabel = $("contextInput"); // now a <span>
       const stpInput = $("stpInput");
@@ -5006,15 +5219,14 @@
       if (document.activeElement !== stpInput) stpInput.value = String(current.id);
       if (!stpInput._bound) {
         stpInput._bound = true;
-        stpInput.addEventListener("blur", () => {
-          const n = parseInt(stpInput.value, 10);
-          if (n > 0 && n !== page().id) {
-            pages = pages.map((p, i) => i === pageIndex ? { ...p, id: n } : p);
-            dirtyTransect = true;
+        stpInput.addEventListener("blur", commitCurrentStpNumberInput);
+        stpInput.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") stpInput.blur();
+          if (e.key === "Escape") {
+            stpInput.value = String(page().id);
+            stpInput.blur();
           }
-          stpInput.value = String(page().id);
         });
-        stpInput.addEventListener("keydown", (e) => { if (e.key === "Enter") stpInput.blur(); });
       }
     }
 
@@ -5024,6 +5236,7 @@
     function render() {
       const current = page();
       bindTopBarInputs(current);
+      bindStpJumpInput(current);
       $("removePage").disabled = pages.length <= 1;
       $("prevPage").disabled = pageIndex <= 0;
       $("nextPage").disabled = pageIndex >= pages.length - 1;
@@ -5074,6 +5287,10 @@
       }
       else if (pendingAction.type === "clear-all-transects") {
         confirmClearAllTransects();
+      }
+      else if (pendingAction.type === "leave-team") {
+        pendingAction = null;
+        clearActiveTeam();
       }
       else if (pendingAction.type === "switch-transect") {
         confirmSwitchTransect();
@@ -5175,7 +5392,7 @@
     // Hidden legacy Del button (used by confirmRemoveSelectedTransect flow)
     $("removeTransect").addEventListener("click", removeSelectedTransect);
 
-    $("leaveTeam").addEventListener("click", clearActiveTeam);
+    $("leaveTeam").addEventListener("click", requestLeaveTeam);
 
     // Close dropdown when clicking outside
     document.addEventListener("click", (e) => {
@@ -5197,6 +5414,7 @@
     });
 
     restoreLocalWorkingState();
+    ensureDefaultTransectAvailable();
     updatePitProfileNetworkStatus();
     updateTeamDisplay();
     render();
