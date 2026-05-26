@@ -3930,15 +3930,17 @@
       if (n === 2) setTimeout(() => document.getElementById('ob-team-name').focus(), 50);
     }
 
-    // ── Hash-based router ────────────────────────────────────────────
-    // Landing = any hash that is NOT '#app'  →  location.hash = ''
-    // App     = '#app'                        →  location.hash = '#app'
-    //
-    // Because the hash is part of the URL, a page refresh or copy-paste
-    // will land on the correct view without any server-side configuration.
+    const PitProfile_VIEW_STATE_KEY = 'PitProfileView';
 
-    function isAppHash() {
-      return window.location.hash === '#app';
+    function isAppHistoryState() {
+      return !!(window.history && history.state && history.state[PitProfile_VIEW_STATE_KEY] === 'app');
+    }
+
+    function ensureLandingHistoryState() {
+      if (!window.history || !history.replaceState) return;
+      if (!history.state || !history.state[PitProfile_VIEW_STATE_KEY]) {
+        history.replaceState({ [PitProfile_VIEW_STATE_KEY]: 'landing' }, '', window.location.href);
+      }
     }
 
     function showLanding() {
@@ -3960,32 +3962,30 @@
 
     function obLaunchApp(e, options = {}) {
       if (e) e.preventDefault();
+      ensureLandingHistoryState();
       hideLanding();
-      // Update the hash so a refresh stays in the app.
-      // Skip if the caller is responding to a hashchange (already correct).
-      if (options.updateHash !== false && !isAppHash()) {
-        // replaceState keeps the forward/back stack clean when called
-        // programmatically; pushState is used for user-initiated navigation
-        // so the browser back button returns to the landing page.
-        if (options.pushHistory === false) {
-          history.replaceState(null, '', '#app');
-        } else {
-          history.pushState(null, '', '#app');
-        }
+
+      const shouldPushHistory = options.pushHistory !== false;
+      if (shouldPushHistory && window.history && history.pushState && !isAppHistoryState()) {
+        history.pushState({ [PitProfile_VIEW_STATE_KEY]: 'app' }, '', window.location.href);
       }
     }
 
     function returnToLanding() {
-      // If we arrived at #app via pushState, back() will pop to landing hash.
-      // Either way, we also explicitly clear the hash so refresh stays on landing.
+      if (isAppHistoryState() && window.history && history.back) {
+        history.back();
+        return;
+      }
       showLanding();
-      history.pushState(null, '', window.location.pathname + window.location.search);
+      if (window.history && history.replaceState) {
+        history.replaceState({ [PitProfile_VIEW_STATE_KEY]: 'landing' }, '', window.location.href);
+      }
     }
 
-    // Respond to browser back/forward and any direct hash change.
-    window.addEventListener('hashchange', function() {
-      if (isAppHash()) {
-        obLaunchApp(null, { updateHash: false });
+    window.addEventListener('popstate', function(event) {
+      const view = event.state && event.state[PitProfile_VIEW_STATE_KEY];
+      if (view === 'app') {
+        obLaunchApp(null, { pushHistory: false });
       } else {
         showLanding();
       }
@@ -4062,13 +4062,7 @@
 
     // Enter key advances through fields, last field triggers Continue
     document.addEventListener('DOMContentLoaded', function() {
-      // On load, route to the correct view based on the URL hash.
-      // #app  → go straight into the app (user refreshed while in the app)
-      // else  → show the landing page
-      if (isAppHash()) {
-        obLaunchApp(null, { updateHash: false, pushHistory: false });
-      }
-      // (landing is already visible by default — no action needed)
+      ensureLandingHistoryState();
 
       const fields = ['ob-team-name', 'ob-team-code', 'ob-member-name'];
       fields.forEach((id, i) => {
