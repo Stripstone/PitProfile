@@ -716,7 +716,8 @@
   .compact-title {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 8px;
+    position: relative;
   }
   .compact-title #stpInput { 
     position: relative; 
@@ -744,10 +745,14 @@
   }
 
   .topbtn {
+    min-height: 34px;
+    display: inline-grid;
+    place-items: center;
     border-radius: 9px;
     background: #ffffff;
-    padding: 5px 10px;
+    padding: 6px 10px;
     font-size: 13px;
+    line-height: 1;
     font-weight: 900;
     box-shadow: 0 1px 5px rgba(0, 0, 0, 0.08);
     color: var(--stone-900);
@@ -816,36 +821,271 @@
   }
 
   /* ============================================================
-     04. TRANSECT QUICKBAR CONTROLS & MEDIA QUERIES
+     04. TRANSECT QUICKBAR + SELECT + MODAL
      ============================================================ */
-  .transect-quickbar {
-    display: grid;
-    grid-template-columns: minmax(0, 1.35fr) auto auto auto;
+
+  /* ── Row 1: topbar select ── */
+  /* ── Combo trigger (looks like a dropdown field at rest) ── */
+  .combo-trigger {
+    display: inline-flex;
     align-items: center;
-    gap: 4px;
+    gap: 5px;
+    min-width: 140px;
+    max-width: 204px;
+    min-height: 34px;
+    border: 1px solid var(--stone-300);
+    border-radius: 9px;
+    background: #ffffff;
+    box-shadow: 0 1px 5px rgba(0,0,0,0.08);
+    padding: 6px 10px;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 900;
+    color: var(--stone-900);
+    cursor: pointer;
+    outline: none;
+    text-align: left;
+  }
+  .combo-trigger[aria-expanded="true"] {
+    border-color: var(--stone-400);
+    box-shadow: 0 0 0 2px rgba(0,0,0,0.06);
+  }
+  .combo-label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .combo-caret {
+    flex-shrink: 0;
+    font-size: 11px;
+    color: var(--stone-400);
+    transition: transform 0.15s;
+  }
+  .combo-trigger[aria-expanded="true"] .combo-caret {
+    transform: rotate(180deg);
+  }
+
+  /* ── Dropdown panel ── */
+  .transect-dropdown {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    min-width: 255px;
+    width: max-content;
+    max-width: min(357px, 90vw);
+    background: #fff;
+    border: 1px solid var(--stone-300);
+    border-radius: 10px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+    overflow: hidden;
+    z-index: 500;
+  }
+  .transect-dropdown[hidden] { display: none; }
+
+  .transect-dropdown-scroll {
+    max-height: 200px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .tdd-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 11px 12px;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--stone-900);
+    border-bottom: 1px solid var(--stone-200);
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .tdd-row:last-child { border-bottom: 0; }
+  .tdd-row:active { background: var(--stone-100); }
+  .tdd-row.active { background: #e6f0fa; color: #1a4a7a; }
+  .tdd-row-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .tdd-row-del {
+    flex-shrink: 0;
+    background: none;
+    border: none;
+    padding: 4px 6px;
+    font-size: 14px;
+    color: var(--stone-400);
+    cursor: pointer;
+    border-radius: 6px;
+    line-height: 1;
+  }
+  .tdd-row-del:hover { color: var(--amber-900); background: var(--amber-50); }
+  .tdd-empty {
+    padding: 20px 12px;
+    text-align: center;
+    font-size: 13px;
+    color: var(--stone-400);
+    font-weight: 600;
+  }
+
+  .transect-dropdown-footer {
+    display: flex;
+    gap: 6px;
+    padding: 8px 10px;
+    border-top: 1px solid var(--stone-200);
+    background: var(--stone-100);
+  }
+
+  /* ── Row 2: quickbar ── */
+  .transect-quickbar {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
     padding: 0 4px;
-    margin-top: -2px;
   }
 
   .transect-inline-select {
     width: 100%;
     min-width: 0;
+    min-height: 34px;
     border: 0;
     border-radius: 12px;
     background: rgba(255, 255, 255, 0.88);
     color: var(--stone-900);
-    padding: 9px 10px;
+    padding: 8px 10px;
     font-size: 13px;
+    line-height: 1;
     font-weight: 900;
     box-shadow: 0 1px 5px rgba(0, 0, 0, 0.08);
     outline: none;
   }
 
   .transect-action {
+    min-height: 34px;
+    display: inline-grid;
+    place-items: center;
     border-radius: 12px;
     background: #ffffff;
     color: var(--stone-900);
-    padding: 9px;
+    padding: 8px 10px;
+    font-size: 12px;
+    line-height: 1;
+    font-weight: 900;
+    box-shadow: 0 1px 5px rgba(0, 0, 0, 0.08);
+    white-space: nowrap;
+  }
+
+  #syncTeam { width: 66px; }
+
+  /* ── Shared small button used in modal ── */
+  .tdd-btn {
+    min-height: 34px;
+    display: inline-grid;
+    place-items: center;
+    border-radius: 8px;
+    border: none;
+    padding: 7px 14px;
+    font-size: 13px;
+    font-weight: 900;
+    line-height: 1;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .tdd-btn-add   { background: #2e7d32; color: #fff; }
+  .tdd-btn-muted { background: var(--stone-200); color: var(--stone-600); }
+  .tdd-btn:disabled { opacity: 0.35; cursor: default; }
+
+  /* ── Add Transect modal ── */
+  .add-transect-modal[hidden] { display: none; }
+  .add-transect-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.45);
+    display: grid;
+    place-items: center;
+    z-index: 9000;
+  }
+  .add-transect-card {
+    background: #fff;
+    border-radius: 14px;
+    padding: 24px 20px 18px;
+    width: min(320px, 90vw);
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+  }
+  .add-transect-title {
+    font-size: 16px;
+    font-weight: 900;
+    color: var(--stone-900);
+    text-align: center;
+  }
+  .add-transect-field {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+    border-bottom: 2px solid var(--stone-300);
+    padding-bottom: 4px;
+  }
+  .add-transect-prefix {
+    font-size: 20px;
+    font-weight: 900;
+    color: var(--stone-500);
+    flex-shrink: 0;
+  }
+  .add-transect-input {
+    flex: 1;
+    border: none;
+    outline: none;
+    font: inherit;
+    font-size: 20px;
+    font-weight: 900;
+    color: var(--stone-900);
+    background: transparent;
+    min-width: 0;
+  }
+  .add-transect-actions {
+    display: flex;
+    gap: 8px;
+  }
+  .add-transect-actions .tdd-btn { flex: 1; min-height: 40px; font-size: 14px; }
+
+  @media (min-width: 760px) {
+    .transect-inline-select { font-size: 14px; padding: 10px 14px; }
+    .transect-action        { font-size: 13px; padding: 10px 12px; }
+  }
+  @media (max-width: 374px) {
+    .transect-quickbar { gap: 3px; }
+    .transect-action   { padding: 9px 7px; font-size: 11px; }
+    .transect-inline-select { padding-left: 8px; padding-right: 8px; }
+    #syncTeam { width: 58px; }
+  }
+
+  .transect-inline-select {
+    width: 100%;
+    min-width: 0;
+    min-height: 34px;
+    border: 0;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.88);
+    color: var(--stone-900);
+    padding: 8px 10px;
+    font-size: 13px;
+    line-height: 1;
+    font-weight: 900;
+    box-shadow: 0 1px 5px rgba(0, 0, 0, 0.08);
+    outline: none;
+  }
+
+  .transect-action {
+    min-height: 34px;
+    display: inline-grid;
+    place-items: center;
+    border-radius: 12px;
+    background: #ffffff;
+    color: var(--stone-900);
+    padding: 8px 10px;
     font-size: 12px;
     line-height: 1;
     font-weight: 900;
@@ -855,6 +1095,10 @@
   .transect-action.danger {
     color: var(--amber-900);
     background: var(--amber-50);
+  }
+
+  #syncTeam {
+    width: auto;
   }
 
   .transect-mini-action {
@@ -890,8 +1134,11 @@
   }
 
   @media (max-width: 374px) {
-    .transect-quickbar { 
-      gap: 3px; 
+    .compact-title {
+      gap: 6px;
+    }
+    .transect-quickbar {
+      gap: 3px;
     }
     .transect-action {
       padding: 9px 7px;
@@ -905,6 +1152,9 @@
     .transect-inline-select {
       padding-left: 8px;
       padding-right: 8px;
+    }
+    .transect-name-input {
+      max-width: 100px;
     }
   }
 
@@ -1010,6 +1260,16 @@
     font-weight: 900;
     line-height: 1;
     padding: 0;
+  }
+
+  .team-top-inline {
+    position: static;
+    transform: none;
+    justify-self: end;
+    max-width: 132px;
+    min-height: 34px;
+    padding-top: 6px;
+    padding-bottom: 6px;
   }
 
   @media (min-width: 760px) {
@@ -1719,6 +1979,9 @@
       font-size: 14px;
       border-radius: 11px;
     }
+    #syncTeam {
+      width: 76px;
+    }
     .topselect {
       max-width: 160px;
       padding: 7px 10px;
@@ -2036,14 +2299,20 @@
     <div class="wrap">
       <header class="topbar">
         <div class="title compact-title">
-          <input
-            id="contextInput"
-            value="T-01"
-            style="width:82px;border:0;border-bottom:2px solid var(--stone-300);background:transparent;font:inherit;font-weight:900;font-size:17px;outline:none;padding:0 2px;"
-            maxlength="18"
-            spellcheck="false"
-            autocomplete="off"
-          />
+          <button class="combo-trigger" id="transectCombo" type="button" aria-haspopup="listbox" aria-expanded="false">
+            <span id="contextInput" class="combo-label">T-01</span>
+            <span class="combo-caret" aria-hidden="true">▾</span>
+          </button>
+          <!-- Dropdown anchored inside .compact-title for position:absolute -->
+          <div class="transect-dropdown" id="transectDropdown" hidden>
+            <div class="transect-dropdown-scroll" id="transectDropdownScroll" role="listbox" aria-label="Saved transects">
+              <!-- rows injected by refreshTransectDropdown() -->
+            </div>
+            <div class="transect-dropdown-footer">
+              <button class="tdd-btn tdd-btn-danger" id="clearAllTransects" type="button">Clear All</button>
+              <button class="tdd-btn tdd-btn-add"    id="addTransect"       type="button">Add New</button>
+            </div>
+          </div>
           <span style="font-size:12px;font-weight:900;color:var(--stone-500);margin-right:-8px;">STP</span>
           <input
             id="stpInput"
@@ -2061,16 +2330,41 @@
         </div>
       </header>
 
+      <!-- Row 2: team pill + Sync, right-aligned -->
       <div class="transect-quickbar">
-        <select class="transect-inline-select" id="transectSelect" aria-label="Saved transects">
-          <option value="">Saved transects</option>
-          <option value="T-01">T-01</option>
-          <option value="T-02">T-02</option>
-          <option value="NorthLine-03">NorthLine-03</option>
-        </select>
-        <button class="transect-action" id="addTransect" type="button" title="Add current transect">Add</button>
-        <button class="transect-action danger" id="removeTransect" type="button" title="Remove selected transect">Del</button>
+        <div class="team-under-render team-top-inline" id="teamPill" hidden>
+          <span id="teamNameDisplay"></span>
+          <button id="leaveTeam" type="button" aria-label="Leave team">×</button>
+        </div>
         <button class="transect-action" id="syncTeam" type="button">Sync</button>
+      </div>
+
+      <!-- Add Transect modal -->
+      <div class="add-transect-modal" id="addTransectModal" hidden aria-modal="true" role="dialog" aria-labelledby="addTransectModalTitle">
+        <div class="add-transect-card">
+          <div class="add-transect-title" id="addTransectModalTitle">Add Transect</div>
+          <div class="add-transect-field">
+            <span class="add-transect-prefix">T-</span>
+            <input
+              id="addTransectSuffix"
+              class="add-transect-input"
+              type="text"
+              maxlength="15"
+              spellcheck="false"
+              autocomplete="off"
+              placeholder="name"
+            />
+          </div>
+          <div class="add-transect-actions">
+            <button class="tdd-btn tdd-btn-muted" id="cancelAddTransect" type="button">Cancel</button>
+            <button class="tdd-btn tdd-btn-add"   id="confirmAddTransect" type="button">Add</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Hidden legacy confirm hook -->
+      <div hidden aria-hidden="true">
+        <button id="removeTransect" type="button" tabindex="-1">Del</button>
       </div>
 
       <div class="team-modal" id="teamJoinPanel" hidden>
@@ -2103,10 +2397,6 @@
       </section>
 
       <div class="render-row">
-        <div class="team-under-render" id="teamPill" hidden>
-          <span id="teamNameDisplay"></span>
-          <button id="leaveTeam" type="button" aria-label="Leave team">×</button>
-        </div>
         <label class="render-label">render <span id="renderDepthMount"></span></label>
       </div>
 
@@ -2232,6 +2522,7 @@
     let pendingImportFile = null;
     let pendingImportPayload = null;
     let activeTeam = null;
+    let teamAuthPending = false;
     let deletedTransects = {};
     const SUPABASE_URL = "https://xkqkulfiwqhmjxcitpst.supabase.co";
     const SUPABASE_KEY = "sb_publishable_nxd1vedbE3lpfEOFjWHShQ_lnXCf7xp";
@@ -2365,6 +2656,13 @@
       return db.teams[String(teamKey || "")] || null;
     }
 
+    function findSimTeamByName(db, teamName) {
+      const target = normalizeSimName(teamName, "Sim Team").toLowerCase();
+      return Object.values(db.teams || {}).find(team =>
+        normalizeSimName(team?.team_name, "Sim Team").toLowerCase() === target
+      ) || null;
+    }
+
     function ensureSimMember(team, memberName) {
       const name = normalizeSimName(memberName, "Sim Member");
       const id = `member_${stableSimHash(name.toLowerCase())}`;
@@ -2463,6 +2761,18 @@
 
           if (name === "stp_v2_create_or_join_team") {
             const key = simTeamKey(params.p_team_name, params.p_team_code);
+            const existingByName = findSimTeamByName(db, params.p_team_name);
+            if (existingByName && existingByName.key !== key) {
+              return {
+                data: {
+                  ok: false,
+                  code: "TEAM_CODE_MISMATCH",
+                  team_name: existingByName.team_name,
+                  simulated: true
+                },
+                error: null
+              };
+            }
             const created = !db.teams[key];
             const team = ensureSimTeam(db, params.p_team_name, params.p_team_code);
             writeSimDb(db);
@@ -3369,7 +3679,7 @@
         if (!dirtyTransect && activeTransectName && transectStore[activeTransectName]) {
           const snapshot = transectStore[activeTransectName];
           pages = clone(snapshot.pages).map(ensurePageShape);
-          pageIndex = clamp(Number(snapshot.pageIndex) || 0, 0, pages.length - 1);
+          pageIndex = 0; // always land on STP 1 when entering a transect
           renderDepth = Math.max(1, Number(snapshot.renderDepth) || DEFAULT_RENDER_DEPTH_CM);
           contextLabel = String(snapshot.name || snapshot.transect || activeTransectName || contextLabel || "T-01");
         } else if (Array.isArray(saved.pages) && saved.pages.length) {
@@ -3389,7 +3699,11 @@
 
 
     function syncDiag(message, data = null) {
-      console.log("[STP sync]", message, data ?? "");
+      if (data !== null && typeof data === "object") {
+        console.log("[STP sync]", message, JSON.stringify(data));
+      } else {
+        console.log("[STP sync]", message, data ?? "");
+      }
     }
 
     function clearSyncDiag() {
@@ -3403,7 +3717,7 @@
         p_team_code: code
       });
       if (error) {
-        console.error("stp_v2_team_key failed", error);
+        console.error("stp_v2_team_key failed", JSON.stringify(error));
         throw new Error(error.message || "Team key failed");
       }
       syncDiag("team key received", { hasKey: Boolean(data) });
@@ -3424,10 +3738,36 @@
       }
     }
 
-    function clearActiveTeam() {
+    function setTeamAuthPending(pending) {
+      teamAuthPending = Boolean(pending);
+      const joinButton = $("joinSyncTeam");
+      const syncButton = $("syncTeam");
+      const panel = $("teamJoinPanel");
+
+      if (joinButton) {
+        joinButton.disabled = teamAuthPending;
+        joinButton.textContent = teamAuthPending ? "Verifying…" : "Continue";
+      }
+      if (syncButton) {
+        syncButton.disabled = teamAuthPending;
+      }
+      if (panel) {
+        panel.setAttribute("aria-busy", teamAuthPending ? "true" : "false");
+      }
+    }
+
+    function sameTeamName(a, b) {
+      return String(a || "").trim().toLowerCase() === String(b || "").trim().toLowerCase();
+    }
+
+    function clearActiveTeamSession() {
       activeTeam = null;
       saveLocalWorkingState();
       updateTeamDisplay();
+    }
+
+    function clearActiveTeam() {
+      clearActiveTeamSession();
       hideTeamJoinPanel();
       showStatus("Left team.");
     }
@@ -3455,17 +3795,23 @@
     }
 
     async function joinTeamFromPanel() {
+      if (teamAuthPending) return;
+
       const name = String($("teamNameInput").value || "").trim();
       const code = String($("teamCodeInput").value || "").trim();
       const member = String($("memberNameInput").value || "").trim();
+      const previousTeam = activeTeam ? { ...activeTeam } : null;
 
       if (!name || !code || !member) {
         showStatus("Fill team fields.");
         return;
       }
 
+      setTeamAuthPending(true);
+      showStatus("Verifying team…");
+
       try {
-        syncDiag("create/join requested", { teamName: name, member });
+        syncDiag("create/join requested", { teamName: name, member, hadActiveTeam: Boolean(previousTeam?.name) });
         const { data, error } = await PitProfileBackend.rpc("stp_v2_create_or_join_team", {
           p_team_name: name,
           p_team_code: code
@@ -3473,14 +3819,21 @@
 
         if (error) {
           syncDiag("create/join RPC error", { message: error.message, details: error.details, hint: error.hint, code: error.code });
-          console.error("Create/join team RPC error:", error);
+          console.error("Create/join team RPC error:", JSON.stringify(error));
           showStatus(error.message || "Team sync error.");
           return;
         }
 
         if (!data?.ok) {
-          syncDiag("create/join rejected", data);
-          showStatus("Team name/code mismatch.");
+          syncDiag("create/join rejected", { ...data, attemptedTeam: name, previousTeam: previousTeam?.name || "" });
+          if (previousTeam?.name && sameTeamName(previousTeam.name, name)) {
+            clearActiveTeamSession();
+            showStatus("Team name/code mismatch.");
+          } else if (previousTeam?.name) {
+            showStatus(`Could not join ${name}. Still using ${previousTeam.name}.`);
+          } else {
+            showStatus("Team name/code mismatch.");
+          }
           return;
         }
         syncDiag(data.created ? "team created" : "team joined", { teamName: data.team_name || name });
@@ -3493,10 +3846,13 @@
         saveLocalWorkingState();
         updateTeamDisplay();
         hideTeamJoinPanel();
+        setTeamAuthPending(false);
         await syncTeamConfirmed({ joinLoadOnly: true, teamWasCreated: Boolean(data.created) });
       } catch (error) {
-        console.error("Create/join team failed:", error);
+        console.error("Create/join team failed:", JSON.stringify(error));
         showStatus(error?.message || "Team failed.");
+      } finally {
+        setTeamAuthPending(false);
       }
     }
 
@@ -3553,7 +3909,7 @@
       if (!isDefaultStarterTransect("T-01", transectStore["T-01"])) return false;
       delete transectStore["T-01"];
       if (activeTransectName === "T-01") activeTransectName = "";
-      syncDiag("removed default starter transect from syncable store", { name: "T-01" });
+      // default starter transect pruned from sync store (expected after list reset)
       return true;
     }
 
@@ -3591,7 +3947,7 @@
 
         if (error) {
           syncDiag("upload RPC error", { name, message: error.message, details: error.details, hint: error.hint, code: error.code });
-          console.error("stp_v2_upsert_transect failed", { name, payload, error });
+          console.error("stp_v2_upsert_transect failed", JSON.stringify({ name, error }));
           throw new Error(error.message || "Upload failed");
         }
 
@@ -3607,7 +3963,7 @@
         });
 
         if (error) {
-          console.error("stp_v2_delete_transect failed", { name, error });
+          console.error("stp_v2_delete_transect failed", JSON.stringify({ name, error }));
           throw new Error(error.message || "Delete sync failed");
         }
 
@@ -3947,6 +4303,11 @@
       clearSyncDiag();
       syncDiag(joinLoadOnly ? "team load started" : "sync started");
 
+      if (teamAuthPending && !joinLoadOnly) {
+        showStatus("Finish team verification before syncing.");
+        return;
+      }
+
       if (!activeTeam?.name || !activeTeam?.code || !activeTeam?.member) {
         showTeamJoinPanel();
         return;
@@ -4054,12 +4415,17 @@
     }
 
     function syncTeam() {
+      if (teamAuthPending) {
+        showStatus("Finish team verification before syncing.");
+        return;
+      }
       if (!ensureTeamSession()) return;
       setPending("confirm-sync-team", `Sync with ${activeTeam.name}?`);
     }
 
     function currentTransectName() {
-      return String($("contextInput")?.value || contextLabel || "").trim();
+      // contextInput is now a <span> display label; authoritative name is contextLabel
+      return String(contextLabel || "").trim();
     }
 
     function naturalTransectSort(a, b) {
@@ -4136,34 +4502,134 @@
     }
 
     function refreshTransectDropdown() {
-      const select = $("transectSelect");
-      if (!select) return;
+      const scroll = $("transectDropdownScroll");
+      if (!scroll) return;
 
       const names = Object.keys(transectStore).sort(naturalTransectSort);
-      const current = activeTransectName && transectStore[activeTransectName] ? activeTransectName : "";
 
-      select.innerHTML = `<option value="">Saved transects</option>` + names.map((name) => {
-        const safe = name.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-        return `<option value="${safe}">${safe}</option>`;
-      }).join("");
+      if (!names.length) {
+        scroll.innerHTML = `<div class="tdd-empty">No saved transects</div>`;
+      } else {
+        scroll.innerHTML = "";
+        names.forEach(name => {
+          const safe = name.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+          const row = document.createElement("div");
+          row.className = "tdd-row" + (name === activeTransectName ? " active" : "");
+          row.setAttribute("role", "option");
+          row.setAttribute("aria-selected", String(name === activeTransectName));
+          row.innerHTML = `<span class="tdd-row-name">${safe}</span><button class="tdd-row-del" type="button" title="Delete" aria-label="Delete ${safe}">🗑</button>`;
+          row.querySelector(".tdd-row-del").addEventListener("click", (e) => {
+            e.stopPropagation();
+            // reuse existing remove flow by temporarily marking selection
+            const sel = $("transectDropdownScroll");
+            sel._pendingDelete = name;
+            removeTransectByName(name);
+          });
+          row.addEventListener("click", (e) => {
+            if (e.target.closest(".tdd-row-del")) return;
+            selectTransect(name);
+            closeTransectMenu();
+          });
+          scroll.appendChild(row);
+        });
+      }
 
-      select.value = current;
-      confirmTransectSelectLabelReady();
+      // Update combo label
+      const label = $("contextInput");
+      if (label) label.textContent = activeTransectName || contextLabel || "T-01";
+
+      // Resolve snapshot-pending class (was waiting for select.value confirmation)
+      document.documentElement.classList.remove("pitprofile-transect-select-pending");
     }
 
     function confirmTransectSelectLabelReady() {
-      const root = document.documentElement;
-      const select = $("transectSelect");
-      if (!select) {
-        root.classList.remove("pitprofile-transect-select-pending");
-        return;
+      // No-op: replaced by refreshTransectDropdown label update above.
+      document.documentElement.classList.remove("pitprofile-transect-select-pending");
+    }
+
+    // ── Dropdown open / close ──
+    function openTransectMenu() {
+      const dd = $("transectDropdown");
+      const btn = $("transectCombo");
+      if (!dd || !btn) return;
+      refreshTransectDropdown();
+      dd.hidden = false;
+      btn.setAttribute("aria-expanded", "true");
+    }
+
+    function closeTransectMenu() {
+      const dd = $("transectDropdown");
+      const btn = $("transectCombo");
+      if (dd) dd.hidden = true;
+      if (btn) btn.setAttribute("aria-expanded", "false");
+    }
+
+    // ── Add Transect modal ──
+    function openAddTransectModal() {
+      closeTransectMenu();
+      const modal = $("addTransectModal");
+      const input = $("addTransectSuffix");
+      if (!modal || !input) return;
+      input.value = "";
+      modal.hidden = false;
+      setTimeout(() => input.focus(), 60);
+    }
+
+    function closeAddTransectModal() {
+      const modal = $("addTransectModal");
+      if (modal) modal.hidden = true;
+    }
+
+    function confirmAddTransect() {
+      const suffix = ($("addTransectSuffix")?.value || "").trim();
+      if (!suffix) { $("addTransectSuffix")?.focus(); return; }
+      const newName = "T-" + suffix;
+      closeAddTransectModal();
+
+      // 1. Lock in the current transect as-is before moving on
+      if (activeTransectName) {
+        transectStore[activeTransectName] = snapshotTransect();
+        const deletedSet = deletedTransectSet();
+        deletedSet.delete(activeTransectName);
+        saveDeletedTransectSet(deletedSet);
       }
 
-      const hasConfirmedActive = Boolean(activeTransectName && transectStore[activeTransectName] && select.value === activeTransectName);
-      const hasConfirmedDefault = !activeTransectName || !transectStore[activeTransectName];
-      if (hasConfirmedActive || hasConfirmedDefault) {
-        root.classList.remove("pitprofile-transect-select-pending");
+      // 2. Create the new transect as a fresh default and switch to it
+      const freshSnapshot = {
+        name: newName,
+        pageIndex: 0,
+        renderDepth: DEFAULT_RENDER_DEPTH_CM,
+        pages: [starterPageTemplate()]
+      };
+      transectStore[newName] = freshSnapshot;
+      const deletedSet2 = deletedTransectSet();
+      deletedSet2.delete(newName);
+      saveDeletedTransectSet(deletedSet2);
+
+      contextLabel = newName;
+      activeTransectName = newName;
+      pages = [starterPageTemplate()];
+      pageIndex = 0;
+      renderDepth = DEFAULT_RENDER_DEPTH_CM;
+      dirtyTransect = false;
+
+      refreshTransectDropdown();
+      render();
+      showStatus(`Added ${newName}.`);
+    }
+
+    // ── Per-row delete (bypasses select-based flow) ──
+    function removeTransectByName(name) {
+      if (!name || !transectStore[name]) {
+        showStatus("Transect not found.");
+        return;
       }
+      // Temporarily wire pending to use this name
+      const origActive = activeTransectName;
+      // Use the existing confirm flow — set select value shim via activeTransectName
+      setPending("remove-transect", `Remove ${name} from saved transects?`);
+      // Store which name to delete so confirmRemoveSelectedTransect uses it
+      window.__pendingDeleteName = name;
     }
 
     function showStatus(text) {
@@ -4194,7 +4660,7 @@
     }
 
     function removeSelectedTransect() {
-      const selected = $("transectSelect")?.value || activeTransectName;
+      const selected = window.__pendingDeleteName || activeTransectName;
       if (!selected || !transectStore[selected]) {
         showStatus("Choose a saved transect first.");
         return;
@@ -4203,7 +4669,8 @@
     }
 
     function confirmRemoveSelectedTransect() {
-      const selected = $("transectSelect")?.value || activeTransectName;
+      const selected = window.__pendingDeleteName || activeTransectName;
+      window.__pendingDeleteName = null;
       if (!selected || !transectStore[selected]) {
         pendingAction = null;
         render();
@@ -4222,7 +4689,18 @@
       if (remaining.length) {
         applyTransectSnapshot(remaining[0], transectStore[remaining[0]]);
       } else {
-        dirtyTransect = true;
+        // Last transect deleted — seed a saved T-01 default
+        contextLabel = "T-01";
+        activeTransectName = "T-01";
+        pages = [starterPageTemplate()];
+        pageIndex = 0;
+        renderDepth = DEFAULT_RENDER_DEPTH_CM;
+        const defaultSnapshot = { name: "T-01", pageIndex: 0, renderDepth: DEFAULT_RENDER_DEPTH_CM, pages: [starterPageTemplate()] };
+        transectStore["T-01"] = defaultSnapshot;
+        const ds = deletedTransectSet();
+        ds.delete("T-01");
+        saveDeletedTransectSet(ds);
+        dirtyTransect = false;
         refreshTransectDropdown();
         render();
       }
@@ -4230,14 +4708,48 @@
       showStatus(`Removed ${selected}.`);
     }
 
+    function clearAllTransects() {
+      if (!Object.keys(transectStore).length) {
+        showStatus("No saved transects to clear.");
+        return;
+      }
+      setPending("clear-all-transects", "Clear all saved transects? This cannot be undone.");
+    }
+
+    function confirmClearAllTransects() {
+      const names = Object.keys(transectStore);
+      const deletedSet = deletedTransectSet();
+      names.forEach(name => {
+        delete transectStore[name];
+        deletedSet.add(name);
+      });
+      saveDeletedTransectSet(deletedSet);
+
+      // Seed a saved T-01 default so there's never a void state
+        contextLabel = "T-01";
+        activeTransectName = "T-01";
+        pages = [starterPageTemplate()];
+        pageIndex = 0;
+        renderDepth = DEFAULT_RENDER_DEPTH_CM;
+        const defaultSnapshot = { name: "T-01", pageIndex: 0, renderDepth: DEFAULT_RENDER_DEPTH_CM, pages: [starterPageTemplate()] };
+        transectStore["T-01"] = defaultSnapshot;
+        const ds = deletedTransectSet();
+        ds.delete("T-01");
+        saveDeletedTransectSet(ds);
+        dirtyTransect = false;
+      pendingAction = null;
+      refreshTransectDropdown();
+      render();
+      showStatus("All transects cleared.");
+    }
+
     function selectTransect(name) {
       if (!name || !transectStore[name]) return;
 
-      if (dirtyTransect) {
-        pendingSelectionName = name;
-        setPending("switch-transect", `Discard unsaved changes and open ${name}?`);
-        $("transectSelect").value = activeTransectName || "";
-        return;
+      // Auto-save current transect state before switching
+      if (activeTransectName && dirtyTransect) {
+        transectStore[activeTransectName] = snapshotTransect();
+        dirtyTransect = false;
       }
 
       applyTransectSnapshot(name, transectStore[name]);
@@ -4465,6 +4977,8 @@
           yes.textContent = "Replace"; no.textContent = "Cancel"; no.style.display = "";
         } else if (pendingAction.type === "remove-transect") {
           yes.textContent = "Remove";  no.textContent = "Cancel"; no.style.display = "";
+        } else if (pendingAction.type === "clear-all-transects") {
+          yes.textContent = "Clear All"; no.textContent = "Cancel"; no.style.display = "";
         } else if (pendingAction.type === "switch-transect") {
           yes.textContent = "Discard"; no.textContent = "Cancel"; no.style.display = "";
         } else if (pendingAction.type === "save-file-dirty") {
@@ -4486,20 +5000,10 @@
     }
 
     function bindTopBarInputs(current) {
-      const ctxInput = $("contextInput");
+      const ctxLabel = $("contextInput"); // now a <span>
       const stpInput = $("stpInput");
-      if (document.activeElement !== ctxInput) ctxInput.value = contextLabel;
+      if (ctxLabel) ctxLabel.textContent = activeTransectName || contextLabel || "T-01";
       if (document.activeElement !== stpInput) stpInput.value = String(current.id);
-      if (!ctxInput._bound) {
-        ctxInput._bound = true;
-        ctxInput.addEventListener("blur", () => {
-          const next = ctxInput.value.trim() || contextLabel;
-          if (next !== contextLabel) dirtyTransect = true;
-          contextLabel = next;
-          ctxInput.value = contextLabel;
-        });
-        ctxInput.addEventListener("keydown", (e) => { if (e.key === "Enter") ctxInput.blur(); });
-      }
       if (!stpInput._bound) {
         stpInput._bound = true;
         stpInput.addEventListener("blur", () => {
@@ -4567,6 +5071,9 @@
       }
       else if (pendingAction.type === "remove-transect") {
         confirmRemoveSelectedTransect();
+      }
+      else if (pendingAction.type === "clear-all-transects") {
+        confirmClearAllTransects();
       }
       else if (pendingAction.type === "switch-transect") {
         confirmSwitchTransect();
@@ -4645,25 +5152,47 @@
     });
 
 
-    $("addTransect").addEventListener("click", () => addCurrentTransect(false));
-
-    $("removeTransect").addEventListener("click", removeSelectedTransect);
-
-    $("transectSelect").addEventListener("change", (event) => {
-      selectTransect(event.target.value);
+    // Combo trigger → open dropdown
+    $("transectCombo").addEventListener("click", (e) => {
+      e.stopPropagation();
+      const dd = $("transectDropdown");
+      if (dd && !dd.hidden) { closeTransectMenu(); } else { openTransectMenu(); }
     });
 
+    // Dropdown footer buttons
+    $("addTransect").addEventListener("click", openAddTransectModal);
+    $("clearAllTransects").addEventListener("click", clearAllTransects);
     $("syncTeam").addEventListener("click", syncTeam);
 
+    // Add modal actions
+    $("confirmAddTransect").addEventListener("click", confirmAddTransect);
+    $("cancelAddTransect").addEventListener("click", closeAddTransectModal);
+    $("addTransectSuffix").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") confirmAddTransect();
+      if (e.key === "Escape") closeAddTransectModal();
+    });
+
+    // Hidden legacy Del button (used by confirmRemoveSelectedTransect flow)
+    $("removeTransect").addEventListener("click", removeSelectedTransect);
+
     $("leaveTeam").addEventListener("click", clearActiveTeam);
+
+    // Close dropdown when clicking outside
+    document.addEventListener("click", (e) => {
+      if (!e.target.closest(".transect-dropdown") && !e.target.closest("#transectCombo")) {
+        closeTransectMenu();
+      }
+    });
 
     $("joinSyncTeam").addEventListener("click", joinTeamFromPanel);
 
     $("cancelJoinTeam").addEventListener("click", hideTeamJoinPanel);
 
     document.addEventListener("keydown", (event) => {
-      if (event.key === "Escape" && !$("teamJoinPanel").hidden) {
-        hideTeamJoinPanel();
+      if (event.key === "Escape") {
+        if (!$("teamJoinPanel").hidden) hideTeamJoinPanel();
+        if (!$("addTransectModal").hidden) closeAddTransectModal();
+        closeTransectMenu();
       }
     });
 
@@ -4966,7 +5495,7 @@
   </script>
 
   <script>
-    if ('serviceWorker' in navigator) {
+    if ('serviceWorker' in navigator && location.hostname === 'pitprofile.com') {
       window.addEventListener('load', function () {
         navigator.serviceWorker.register('/sw.js').catch(function (error) {
           console.warn('PitProfile service worker registration failed:', error);
