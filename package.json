@@ -1,0 +1,13 @@
+{
+  "name": "pitprofile-static-build",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Static PitProfile build with pre-deploy JavaScript obfuscation for GitHub Pages.",
+  "scripts": {
+    "build": "node scripts/build-obfuscate.js",
+    "build:plain": "PITPROFILE_OBFUSCATE=0 node scripts/build-obfuscate.js"
+  },
+  "devDependencies": {
+    "javascript-obfuscator": "^4.1.1"
+  }
+}
