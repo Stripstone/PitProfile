@@ -102,6 +102,16 @@
     box-sizing: border-box; 
   }
 
+  #dvh-sentinel {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 0;
+    height: 100dvh;
+    visibility: hidden;
+    pointer-events: none;
+  }
+
   body {
     margin: 0;
     min-height: 100vh;
@@ -2410,6 +2420,7 @@
   </style>
 </head>
 <body>
+  <div id="dvh-sentinel" aria-hidden="true"></div>
 
   <!-- ONBOARDING OVERLAY -->
   <div id="onboarding-overlay">
@@ -5954,7 +5965,9 @@
       const appStyle = getComputedStyle(app);
       const appVerticalPadding = numberFromPx(appStyle.paddingTop) + numberFromPx(appStyle.paddingBottom);
       const reservedHeight = topbar.getBoundingClientRect().height + footer.getBoundingClientRect().height + appVerticalPadding + FOOTER_BREATHING_ROOM;
-      const availableWrapHeight = window.innerHeight - reservedHeight;
+      const dvhSentinel = document.getElementById('dvh-sentinel');
+      const viewportHeight = dvhSentinel ? dvhSentinel.offsetHeight : window.innerHeight;
+      const availableWrapHeight = viewportHeight - reservedHeight;
 
       const minScale = window.innerWidth >= 700 ? MIN_DESKTOP_SCALE : MIN_MOBILE_SCALE;
       const nextScale = Math.max(minScale, Math.min(1, availableWrapHeight / naturalWrapHeight));
