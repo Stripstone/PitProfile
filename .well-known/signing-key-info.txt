@@ -4,7 +4,7 @@ Key store file: signing.keystore
 Key store password: YKsZzk27Eq1d
 Key alias: my-key-alias
 Key password: YKsZzk27Eq1d
-Signer's full name: PitProfile Admin
-Signer's organization: PitProfile
-Signer's organizational unit: Engineering
-Signer's country code: US
+Signer's full name: 
+Signer's organization: 
+Signer's organizational unit: 
+Signer's country code: 

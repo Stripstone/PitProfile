@@ -1,0 +1,3 @@
+I opened the app fresh and saw that I was already in a team 'survey1'
+Couldn't sync - I made STP changes while in 'survey1' and when I hit sync, it said "Couldn't sync" and reset all data
+
