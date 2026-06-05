@@ -489,7 +489,7 @@
   }
   
   /* Shell chrome is hidden until pitprofile-app-view is set on <html>.
-     visibility:hidden (not display:none) so the elements still participate
+     visibility:hidden (not display:none) so elements still participate
      in layout and BCR measurements used by updateContainerScale(). */
   .shell-topbar,
   .shell-footer {
@@ -6020,6 +6020,461 @@
       });
     }
   </script>
+
+  <!-- ============================================================
+       BEGIN PITPROFILE-VIEWPORT-DIAG v1
+       Diagnostic-only commit. Reads viewport/layout signals and
+       logs them silently on load. On-device panel is hidden behind
+       5 taps on the network-status dot — no visible debug affordance
+       in normal use. Remove this entire block (BEGIN → END) once
+       the root cause of the Play-installed footer rendering issue
+       is confirmed.
+       ============================================================ -->
+  <style>
+    /* Panel is hidden by default; toggled via JS only. */
+    #pp-diag-panel {
+      display: none;
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      z-index: 999999;
+      background: rgba(15, 15, 15, 0.93);
+      color: #e2fbe8;
+      font: 600 10.5px/1.55 "Courier New", monospace;
+      padding: 8px 12px 12px;
+      max-height: 52vh;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      border-top: 2px solid #22c55e;
+      touch-action: pan-y;
+    }
+    #pp-diag-panel.pp-diag-open {
+      display: block;
+    }
+    #pp-diag-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 6px;
+    }
+    #pp-diag-title {
+      color: #86efac;
+      font-size: 10.5px;
+      letter-spacing: 0.04em;
+    }
+    #pp-diag-controls { display: flex; gap: 8px; }
+    .pp-diag-btn {
+      background: rgba(255,255,255,0.09);
+      border: 1px solid rgba(255,255,255,0.20);
+      color: #d1fae5;
+      font: 600 10px "Courier New", monospace;
+      border-radius: 4px;
+      padding: 2px 8px;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+    .pp-diag-btn:active { background: rgba(255,255,255,0.20); }
+    #pp-diag-table { width: 100%; border-collapse: collapse; }
+    #pp-diag-table tr:nth-child(even) td { background: rgba(255,255,255,0.03); }
+    #pp-diag-table td {
+      padding: 1.5px 6px;
+      vertical-align: top;
+      white-space: nowrap;
+    }
+    #pp-diag-table td:first-child {
+      color: #6ee7b7;
+      min-width: 210px;
+      padding-right: 10px;
+    }
+    .pp-diag-warn  { color: #fcd34d; }
+    .pp-diag-alert { color: #f87171; font-weight: 900; }
+    .pp-diag-note  { color: #94a3b8; font-style: italic; }
+    #pp-diag-snap-btn {
+      margin-top: 8px;
+      display: block;
+      width: 100%;
+      text-align: center;
+      background: #166534;
+      border: none;
+      color: #bbf7d0;
+      font: 700 10.5px "Courier New", monospace;
+      padding: 5px;
+      border-radius: 5px;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+    #pp-diag-snap-btn:active { background: #15803d; }
+    #pp-diag-snap-out {
+      color: #86efac;
+      font-size: 9.5px;
+      margin-top: 5px;
+      word-break: break-all;
+      white-space: pre-wrap;
+    }
+  </style>
+
+  <div id="pp-diag-panel" role="region" aria-label="Viewport diagnostic panel">
+    <div id="pp-diag-header">
+      <span id="pp-diag-title">⬛ PitProfile Viewport Diagnostic</span>
+      <div id="pp-diag-controls">
+        <button class="pp-diag-btn" id="pp-diag-refresh-btn" type="button">↺ refresh</button>
+        <button class="pp-diag-btn" id="pp-diag-close-btn"   type="button">✕ close</button>
+      </div>
+    </div>
+    <table id="pp-diag-table"><tbody></tbody></table>
+    <button id="pp-diag-snap-btn" type="button">📋 Copy snapshot JSON to clipboard</button>
+    <div id="pp-diag-snap-out"></div>
+  </div>
+
+  <script>
+  (function ppDiag() {
+    'use strict';
+
+    // ── helpers ──────────────────────────────────────────────────────
+    function px(v) {
+      return Number.isFinite(v) ? v.toFixed(1) + ' px' : String(v);
+    }
+
+    // Flag values that deviate more than a threshold from a reference measurement.
+    // Used to highlight candidates without presuming which one is "correct".
+    function deviationClass(value, ref) {
+      if (!Number.isFinite(value) || !Number.isFinite(ref)) return '';
+      var d = Math.abs(value - ref);
+      if (d > 40) return 'pp-diag-alert';
+      if (d > 6)  return 'pp-diag-warn';
+      return '';
+    }
+
+    // ── measurement snapshot ─────────────────────────────────────────
+    // Collects every viewport signal relevant to the Play-installed TWA
+    // footer rendering issue. No values are treated as authoritative here;
+    // the goal is to surface which one diverges from the others so the
+    // fix can target the right boundary.
+    function snapshot() {
+      var vv      = window.visualViewport || null;
+      var dvhEl   = document.getElementById('dvh-sentinel');
+      var topbar  = document.querySelector('.shell-topbar');
+      var footer  = document.querySelector('.shell-footer');
+      var wrap    = document.querySelector('.wrap');
+      var app     = document.querySelector('.app');
+      var root    = document.documentElement;
+
+      // --- Viewport boundary candidates ---
+      var innerH   = window.innerHeight;
+      var innerW   = window.innerWidth;
+      var vvH      = vv ? vv.height      : null;
+      var vvW      = vv ? vv.width       : null;
+      var vvOT     = vv ? vv.offsetTop   : null;
+      var vvOL     = vv ? vv.offsetLeft  : null;
+      var vvScale  = vv ? vv.scale       : null;
+      var clH      = root.clientHeight;
+      var clW      = root.clientWidth;
+      var dvhH     = dvhEl ? dvhEl.offsetHeight : null;   // resolved 100svh
+      var screenH  = window.screen ? window.screen.height      : null;
+      var screenAH = window.screen ? window.screen.availHeight : null;
+
+      // Deltas relative to innerHeight (not presuming it is correct;
+      // just a convenient common reference for comparison).
+      var dvhDelta = dvhH != null ? dvhH - innerH : null;
+      var vvDelta  = vvH  != null ? vvH  - innerH : null;
+      var clDelta  = clH  - innerH;
+
+      // --- Display-mode / container context ---
+      var mqlStandalone = window.matchMedia('(display-mode: standalone)').matches;
+      var mqlMinUi      = window.matchMedia('(display-mode: minimal-ui)').matches;
+      var mqlBrowser    = window.matchMedia('(display-mode: browser)').matches;
+      var mqlFullscreen = window.matchMedia('(display-mode: fullscreen)').matches;
+      var navStandalone = !!navigator.standalone;           // iOS Safari PWA
+      var isTWA = (function() {
+        try { return !!(document.referrer && document.referrer.startsWith('android-app://')); }
+        catch(e) { return false; }
+      })();
+      var ua = navigator.userAgent;
+
+      // --- Layout element heights (scaled BCR) ---
+      var currentScale = parseFloat(getComputedStyle(root).getPropertyValue('--app-container-scale')) || 1;
+      var topbarH   = topbar ? topbar.getBoundingClientRect().height  : null;
+      var footerH   = footer ? footer.getBoundingClientRect().height  : null;
+      var wrapH     = wrap   ? wrap.getBoundingClientRect().height    : null;
+      var appStyle  = app    ? getComputedStyle(app)                  : null;
+      var appPadV   = appStyle
+        ? (parseFloat(appStyle.paddingTop) || 0) + (parseFloat(appStyle.paddingBottom) || 0)
+        : null;
+      var reservedH = (topbarH != null && footerH != null && appPadV != null)
+        ? topbarH + footerH + appPadV + 8  /* FOOTER_BREATHING_ROOM */
+        : null;
+      var totalAccountedH = (reservedH != null && wrapH != null) ? reservedH + wrapH : null;
+
+      // Which value does updateContainerScale() currently use?
+      var scaleUsedH = dvhH != null ? dvhH : innerH;
+      var scaleUsedSource = dvhH != null ? 'dvh-sentinel (100svh)' : 'window.innerHeight (sentinel missing)';
+
+      // Over-reservation flag: if the sum of reserved + wrap exceeds the value
+      // the scale logic used, the footer is likely pushed off-screen.
+      // Neutral: logged as a candidate signal, not a confirmed root cause.
+      var overReserved = totalAccountedH != null ? totalAccountedH > scaleUsedH : null;
+
+      return {
+        ts: new Date().toISOString(),
+        viewport: {
+          'window.innerHeight':              innerH,
+          'window.innerWidth':               innerW,
+          'visualViewport.height':           vvH,
+          'visualViewport.width':            vvW,
+          'visualViewport.offsetTop':        vvOT,
+          'visualViewport.offsetLeft':       vvOL,
+          'visualViewport.scale':            vvScale,
+          'documentElement.clientHeight':    clH,
+          'documentElement.clientWidth':     clW,
+          '100svh via dvh-sentinel':         dvhH,
+          'screen.height':                   screenH,
+          'screen.availHeight':              screenAH
+        },
+        deltas_vs_innerHeight: {
+          'dvh-sentinel − innerHeight':              dvhDelta,
+          'visualViewport.height − innerHeight':     vvDelta,
+          'documentElement.clientHeight − innerHeight': clDelta
+        },
+        scaleLogicInputs: {
+          'viewportHeight value used':           scaleUsedH,
+          'viewportHeight source':               scaleUsedSource,
+          '--app-container-scale':               currentScale,
+          'topbar BCR height':                   topbarH,
+          'footer BCR height':                   footerH,
+          'app vertical padding':                appPadV,
+          'reservedHeight (topbar+footer+pad+8)': reservedH,
+          'wrap BCR height':                     wrapH,
+          'totalAccountedH (reserved+wrap)':     totalAccountedH,
+          'totalAccountedH > scaleUsedH (over-reserved candidate)': overReserved
+        },
+        context: {
+          'display-mode: standalone':  mqlStandalone,
+          'display-mode: minimal-ui':  mqlMinUi,
+          'display-mode: browser':     mqlBrowser,
+          'display-mode: fullscreen':  mqlFullscreen,
+          'navigator.standalone (iOS PWA)': navStandalone,
+          'TWA referrer heuristic':    isTWA,
+          'userAgent':                 ua
+        }
+      };
+    }
+
+    // ── render table ─────────────────────────────────────────────────
+    function renderTable(snap) {
+      var tbody = document.querySelector('#pp-diag-table tbody');
+      if (!tbody) return;
+      tbody.innerHTML = '';
+
+      var ref = snap.viewport['window.innerHeight'];
+
+      function section(title) {
+        var tr = document.createElement('tr');
+        tr.innerHTML = '<td colspan="2" style="color:#4ade80;padding-top:8px;padding-bottom:2px;'
+          + 'font-size:10px;letter-spacing:0.06em;border-bottom:1px solid rgba(74,222,128,0.25)">'
+          + title + '</td>';
+        tbody.appendChild(tr);
+      }
+
+      function row(label, rawVal, cssClass, note) {
+        var display;
+        if (rawVal === null || rawVal === undefined) {
+          display = '–';
+        } else if (typeof rawVal === 'boolean') {
+          display = rawVal ? '✓ yes' : '✗ no';
+        } else if (typeof rawVal === 'number') {
+          display = Number.isFinite(rawVal) ? rawVal.toFixed(1) + ' px' : String(rawVal);
+        } else {
+          display = String(rawVal);
+        }
+        if (note) display += ' <span class="pp-diag-note">(' + note + ')</span>';
+        var tr = document.createElement('tr');
+        tr.innerHTML = '<td>' + label + '</td>'
+          + '<td class="' + (cssClass || '') + '">' + display + '</td>';
+        tbody.appendChild(tr);
+      }
+
+      function deltaRow(label, val) {
+        var cls = '';
+        if (Number.isFinite(val)) {
+          var a = Math.abs(val);
+          cls = a > 40 ? 'pp-diag-alert' : (a > 6 ? 'pp-diag-warn' : '');
+        }
+        var display = Number.isFinite(val) ? (val >= 0 ? '+' : '') + val.toFixed(1) + ' px' : '–';
+        var tr = document.createElement('tr');
+        tr.innerHTML = '<td>' + label + '</td><td class="' + cls + '">' + display + '</td>';
+        tbody.appendChild(tr);
+      }
+
+      // SECTION 1: all four boundary candidates
+      section('VIEWPORT BOUNDARY CANDIDATES');
+      row('window.innerHeight',           ref);
+      row('visualViewport.height',
+          snap.viewport['visualViewport.height'],
+          deviationClass(snap.viewport['visualViewport.height'], ref),
+          snap.viewport['visualViewport.height'] == null ? 'API unavailable' : null);
+      row('documentElement.clientHeight', snap.viewport['documentElement.clientHeight'],
+          deviationClass(snap.viewport['documentElement.clientHeight'], ref));
+      row('100svh via dvh-sentinel',      snap.viewport['100svh via dvh-sentinel'],
+          deviationClass(snap.viewport['100svh via dvh-sentinel'], ref),
+          snap.viewport['100svh via dvh-sentinel'] == null ? 'sentinel missing' : null);
+
+      // SECTION 2: deltas — the key evidence
+      section('DELTAS vs window.innerHeight  (yellow >6 px · red >40 px)');
+      deltaRow('dvh-sentinel − innerHeight',              snap.deltas_vs_innerHeight['dvh-sentinel − innerHeight']);
+      deltaRow('visualViewport.height − innerHeight',     snap.deltas_vs_innerHeight['visualViewport.height − innerHeight']);
+      deltaRow('clientHeight − innerHeight',              snap.deltas_vs_innerHeight['documentElement.clientHeight − innerHeight']);
+
+      // SECTION 3: additional viewport signals
+      section('ADDITIONAL VIEWPORT SIGNALS');
+      row('window.innerWidth',             snap.viewport['window.innerWidth']);
+      row('visualViewport.width',          snap.viewport['visualViewport.width']);
+      row('visualViewport.offsetTop',      snap.viewport['visualViewport.offsetTop']);
+      row('visualViewport.offsetLeft',     snap.viewport['visualViewport.offsetLeft']);
+      row('visualViewport.scale',          snap.viewport['visualViewport.scale']);
+      row('screen.height',                 snap.viewport['screen.height']);
+      row('screen.availHeight',            snap.viewport['screen.availHeight']);
+
+      // SECTION 4: scale logic inputs
+      section('SCALE LOGIC INPUTS  (updateContainerScale)');
+      var sl = snap.scaleLogicInputs;
+      row('viewportHeight value used',        sl['viewportHeight value used']);
+      row('viewportHeight source',            sl['viewportHeight source'],    '', null);
+      row('--app-container-scale',            sl['--app-container-scale'],    '', null);
+      row('topbar BCR height',                sl['topbar BCR height']);
+      row('footer BCR height',                sl['footer BCR height']);
+      row('app vertical padding',             sl['app vertical padding']);
+      row('reservedHeight (t+f+pad+8)',        sl['reservedHeight (topbar+footer+pad+8)']);
+      row('wrap BCR height',                  sl['wrap BCR height']);
+      row('totalAccountedH (reserved+wrap)',  sl['totalAccountedH (reserved+wrap)']);
+      var over = sl['totalAccountedH > scaleUsedH (over-reserved candidate)'];
+      row('over-reserved candidate?', over === true ? '⚠ yes' : over === false ? 'no' : '–',
+          over === true ? 'pp-diag-warn' : '');
+
+      // SECTION 5: container / display-mode context
+      section('CONTAINER / DISPLAY-MODE CONTEXT');
+      var ctx = snap.context;
+      row('display-mode: standalone',      ctx['display-mode: standalone']);
+      row('display-mode: minimal-ui',      ctx['display-mode: minimal-ui']);
+      row('display-mode: browser',         ctx['display-mode: browser']);
+      row('display-mode: fullscreen',      ctx['display-mode: fullscreen']);
+      row('navigator.standalone (iOS)',    ctx['navigator.standalone (iOS PWA)']);
+      row('TWA referrer heuristic',        ctx['TWA referrer heuristic'],
+          ctx['TWA referrer heuristic'] ? 'pp-diag-warn' : '');
+      row('userAgent',                     ctx['userAgent'], '', null);
+
+      var stamp = document.createElement('tr');
+      stamp.innerHTML = '<td colspan="2" style="color:#6b7280;font-size:9px;padding-top:7px">'
+        + 'snapshot at ' + snap.ts + '</td>';
+      tbody.appendChild(stamp);
+    }
+
+    // ── clipboard helper ─────────────────────────────────────────────
+    function copySnapshot() {
+      var snap = snapshot();
+      var json = JSON.stringify(snap, null, 2);
+      var out  = document.getElementById('pp-diag-snap-out');
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(json).then(function() {
+          if (out) out.textContent = '✓ Copied to clipboard.';
+        }).catch(function() {
+          if (out) { out.textContent = json; }
+        });
+      } else {
+        if (out) out.textContent = json;
+      }
+      console.group('[PitProfile Viewport Diagnostic] manual snapshot');
+      console.log(snap);
+      console.groupEnd();
+    }
+
+    // ── panel open / close ───────────────────────────────────────────
+    function openPanel() {
+      var panel = document.getElementById('pp-diag-panel');
+      if (panel) {
+        panel.classList.add('pp-diag-open');
+        renderTable(snapshot());
+      }
+    }
+    function closePanel() {
+      var panel = document.getElementById('pp-diag-panel');
+      if (panel) panel.classList.remove('pp-diag-open');
+    }
+
+    // ── 5-tap unlock on the network-status dot ───────────────────────
+    // Attaches to [data-network-status] (the existing Online/Offline indicator).
+    // Five taps/clicks within 2 s open the diagnostic panel. No visible
+    // affordance is added; the gesture is intentional and undocumented.
+    function attachTapUnlock() {
+      var dot = document.querySelector('[data-network-status]');
+      if (!dot) return;
+      var tapCount  = 0;
+      var tapTimer  = null;
+      var TAP_LIMIT = 5;
+      var TAP_WINDOW_MS = 2000;
+
+      dot.addEventListener('click', function() {
+        tapCount++;
+        if (tapTimer) clearTimeout(tapTimer);
+        if (tapCount >= TAP_LIMIT) {
+          tapCount = 0;
+          openPanel();
+          return;
+        }
+        tapTimer = setTimeout(function() { tapCount = 0; }, TAP_WINDOW_MS);
+      }, { passive: true });
+    }
+
+    // ── wire up panel buttons ────────────────────────────────────────
+    function wireButtons() {
+      var closeBtn   = document.getElementById('pp-diag-close-btn');
+      var refreshBtn = document.getElementById('pp-diag-refresh-btn');
+      var snapBtn    = document.getElementById('pp-diag-snap-btn');
+
+      if (closeBtn)   closeBtn.addEventListener('click',   closePanel);
+      if (refreshBtn) refreshBtn.addEventListener('click', function() { renderTable(snapshot()); });
+      if (snapBtn)    snapBtn.addEventListener('click',    copySnapshot);
+
+      // Keep panel live on resize / orientation change
+      window.addEventListener('resize', function() {
+        var panel = document.getElementById('pp-diag-panel');
+        if (panel && panel.classList.contains('pp-diag-open')) renderTable(snapshot());
+      }, { passive: true });
+      window.addEventListener('orientationchange', function() {
+        setTimeout(function() {
+          var panel = document.getElementById('pp-diag-panel');
+          if (panel && panel.classList.contains('pp-diag-open')) renderTable(snapshot());
+        }, 300);
+      }, { passive: true });
+    }
+
+    // ── silent console log on load (always fires) ────────────────────
+    function silentLog() {
+      var snap = snapshot();
+      console.group('[PitProfile Viewport Diagnostic] load snapshot');
+      console.log('Full snapshot:', snap);
+      console.table(snap.viewport);
+      console.table(snap.deltas_vs_innerHeight);
+      console.table(snap.scaleLogicInputs);
+      console.table(snap.context);
+      console.groupEnd();
+    }
+
+    // ── init ─────────────────────────────────────────────────────────
+    function init() {
+      wireButtons();
+      attachTapUnlock();
+      silentLog();
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', init, { once: true });
+    } else {
+      init();
+    }
+  })();
+  </script>
+  <!-- END PITPROFILE-VIEWPORT-DIAG v1 -->
 
 </body>
 </html>
