@@ -121,10 +121,10 @@
     -webkit-font-smoothing: antialiased;
   }
 
-  /* Lock scroll on the document while the landing/onboarding overlay is
-     visible. This prevents browser chrome show/hide (triggered by scroll)
-     from firing resize events that interfere with the scale calculation.
-     Released the moment pitprofile-app-view is set on <html>. */
+  /* Lock scroll on the document while the landing overlay is visible.
+     Prevents browser chrome show/hide on scroll from firing resize
+     events that interfere with the scale calculation.
+     Released when pitprofile-app-view is set on <html>. */
   html:not(.pitprofile-app-view),
   html:not(.pitprofile-app-view) body {
     overflow: hidden;
@@ -497,22 +497,10 @@
     flex-direction: column; 
     min-height: 100vh; 
   }
-
-  /* In app view the shell must be exactly as tall as the value used by
-     updateContainerScale() — set via --vv-height from visualViewport.height —
-     so the footer cannot push past the bottom and create a scrollable document.
-     overflow:clip prevents scroll expansion without clipping painted borders. */
-  html.pitprofile-app-view #app-shell {
-    height: var(--vv-height, 100vh);
-    min-height: unset;
-    overflow: clip;
-  }
-
+  
   /* Shell chrome is hidden until pitprofile-app-view is set on <html>.
      visibility:hidden (not display:none) so elements still participate
-     in layout and BCR measurements used by updateContainerScale().
-     No background or border overrides here — the original .shell-topbar
-     and .shell-footer rules below handle those correctly. */
+     in layout and BCR measurements used by updateContainerScale(). */
   .shell-topbar,
   .shell-footer {
     visibility: hidden;
@@ -6011,10 +5999,14 @@
       // that Android returns (e.g. 826.285…). Fall back to innerHeight if the API is
       // unavailable, and keep the sentinel read accessible for the diagnostic only.
       const vv = window.visualViewport;
-      const viewportHeight = (vv && vv.height) ? Math.round(vv.height) : window.innerHeight;
-      // Keep shell height in sync with scale calculation input so #app-shell
-      // does not size to 100vh which can differ by the nav-bar delta (56 px).
-      root.style.setProperty("--vv-height", viewportHeight + "px");
+      // Use the larger of visualViewport.height and the dvh-sentinel (100svh).
+      // visualViewport.height is the true visible area in TWA contexts where
+      // 100svh is compressed by the nav bar (56 px delta confirmed in diagnostics).
+      // Taking the max preserves the original svh-based scaling behaviour on
+      // platforms where both agree, while correcting the TWA undercount.
+      const vvH = (vv && vv.height) ? Math.round(vv.height) : window.innerHeight;
+      const svhH = dvhSentinel ? dvhSentinel.offsetHeight : window.innerHeight;
+      const viewportHeight = Math.max(vvH, svhH);
       const availableWrapHeight = viewportHeight - reservedHeight;
 
       const minScale = window.innerWidth >= 700 ? MIN_DESKTOP_SCALE : MIN_MOBILE_SCALE;
@@ -6232,8 +6224,12 @@
       var totalAccountedH = (reservedH != null && wrapH != null) ? reservedH + wrapH : null;
 
       // Which value does updateContainerScale() currently use?
-      var scaleUsedH = (vv && vv.height) ? Math.round(vv.height) : innerH;
-      var scaleUsedSource = (vv && vv.height) ? 'visualViewport.height' : 'window.innerHeight (vv unavailable)';
+      var vvHd = (vv && vv.height) ? Math.round(vv.height) : innerH;
+      var svhHd = dvhH != null ? dvhH : innerH;
+      var scaleUsedH = Math.max(vvHd, svhHd);
+      var scaleUsedSource = (vv && vv.height)
+        ? 'max(visualViewport.height=' + vvHd + ', 100svh=' + svhHd + ')'
+        : 'window.innerHeight (vv unavailable)';
 
       // Over-reservation flag: if the sum of reserved + wrap exceeds the value
       // the scale logic used, the footer is likely pushed off-screen.
@@ -6399,15 +6395,47 @@
       var snap = snapshot();
       var json = JSON.stringify(snap, null, 2);
       var out  = document.getElementById('pp-diag-snap-out');
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(json).then(function() {
-          if (out) out.textContent = '✓ Copied to clipboard.';
-        }).catch(function() {
-          if (out) { out.textContent = json; }
-        });
-      } else {
+
+      function onSuccess() {
+        if (out) out.textContent = '✓ Copied to clipboard.';
+      }
+      function onFail() {
+        // Final fallback: render JSON as selectable text in the panel.
         if (out) out.textContent = json;
       }
+
+      // Primary: async Clipboard API (requires secure context + focus).
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(json).then(onSuccess).catch(function() {
+          // Secondary: execCommand fallback for WebViews that block the
+          // Clipboard API even on user gesture (TWA, older Android WebView).
+          var ta = document.createElement('textarea');
+          ta.value = json;
+          ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0';
+          document.body.appendChild(ta);
+          ta.focus();
+          ta.select();
+          try {
+            var ok = document.execCommand('copy');
+            if (ok) { onSuccess(); } else { onFail(); }
+          } catch(e) { onFail(); }
+          document.body.removeChild(ta);
+        });
+      } else {
+        // execCommand path for browsers without Clipboard API at all.
+        var ta = document.createElement('textarea');
+        ta.value = json;
+        ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        try {
+          var ok = document.execCommand('copy');
+          if (ok) { onSuccess(); } else { onFail(); }
+        } catch(e) { onFail(); }
+        document.body.removeChild(ta);
+      }
+
       console.group('[PitProfile Viewport Diagnostic] manual snapshot');
       console.log(snap);
       console.groupEnd();
