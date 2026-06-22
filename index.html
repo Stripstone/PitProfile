@@ -5957,24 +5957,41 @@
   // Smooth whole-container vertical adaptation.
   // Footer/topbar remain in normal flow; the product container eases down only
   // when the available viewport height would otherwise force avoidable scroll.
+  //
+  // Mobile viewport locking (< 550px width):
+  // On phone-sized viewports, browser chrome (address bar, nav bar) animates
+  // in and out during scroll, firing resize events that would otherwise cause
+  // the container scale to jump. We lock the viewport height reference on first
+  // stable render and ignore subsequent resize deltas below ROTATION_DELTA_THRESHOLD,
+  // treating those as chrome animation noise. Deltas at or above the threshold
+  // are treated as real orientation changes and re-lock to the new height.
+  // Devices >= 550px (tablets and above) use the original dynamic behaviour.
   (function () {
     const MIN_DESKTOP_SCALE = 0.72;
     const MIN_MOBILE_SCALE = 0.86;
     const FOOTER_BREATHING_ROOM = 8;
-    let resizeFrame = null;
+    const MOBILE_VIEWPORT_LOCK_WIDTH = 550;
+    const ROTATION_DELTA_THRESHOLD = 200;
+
+    let resizeTimer = null;
+    let lockedViewportFloor = 0;
 
     function numberFromPx(value) {
       const parsed = parseFloat(value);
       return Number.isFinite(parsed) ? parsed : 0;
     }
 
+    function isMobileWidth() {
+      return window.innerWidth < MOBILE_VIEWPORT_LOCK_WIDTH;
+    }
+
     function scheduleContainerScaleUpdate() {
-      if (resizeFrame) return;
-      resizeFrame = window.requestAnimationFrame(updateContainerScale);
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(updateContainerScale, 120);
     }
 
     function updateContainerScale() {
-      resizeFrame = null;
+      resizeTimer = null;
 
       const root = document.documentElement;
       const wrap = document.querySelector('.wrap');
@@ -5991,6 +6008,7 @@
       const appStyle = getComputedStyle(app);
       const appVerticalPadding = numberFromPx(appStyle.paddingTop) + numberFromPx(appStyle.paddingBottom);
       const reservedHeight = topbar.getBoundingClientRect().height + footer.getBoundingClientRect().height + appVerticalPadding + FOOTER_BREATHING_ROOM;
+
       const dvhSentinel = document.getElementById('dvh-sentinel');
       // Use visualViewport.height as the primary source: it reports the true visible
       // area in TWA/Play-installed contexts where 100svh and clientHeight are reduced
@@ -6006,9 +6024,29 @@
       // platforms where both agree, while correcting the TWA undercount.
       const vvH = (vv && vv.height) ? Math.round(vv.height) : window.innerHeight;
       const svhH = dvhSentinel ? dvhSentinel.offsetHeight : window.innerHeight;
-      const viewportHeight = Math.max(vvH, svhH);
-      const availableWrapHeight = viewportHeight - reservedHeight;
+      const rawViewportHeight = Math.max(vvH, svhH);
 
+      let viewportHeight;
+      if (isMobileWidth()) {
+        if (!lockedViewportFloor) {
+          // First stable read on a phone-sized viewport — lock it.
+          lockedViewportFloor = rawViewportHeight;
+        } else {
+          const delta = Math.abs(rawViewportHeight - lockedViewportFloor);
+          if (delta >= ROTATION_DELTA_THRESHOLD) {
+            // Delta large enough to be a real orientation change — re-lock.
+            lockedViewportFloor = rawViewportHeight;
+          }
+          // Small delta (browser chrome show/hide ~50-80px) — ignore, hold floor.
+        }
+        viewportHeight = lockedViewportFloor;
+      } else {
+        // Tablet and above — reset any stale floor and use dynamic height.
+        lockedViewportFloor = 0;
+        viewportHeight = rawViewportHeight;
+      }
+
+      const availableWrapHeight = viewportHeight - reservedHeight;
       const minScale = window.innerWidth >= 700 ? MIN_DESKTOP_SCALE : MIN_MOBILE_SCALE;
       const nextScale = Math.max(minScale, Math.min(1, availableWrapHeight / naturalWrapHeight));
       const readabilityScale = Math.min(1.14, Math.max(1, 1 / Math.max(nextScale, 0.01)));
@@ -6019,6 +6057,9 @@
     window.addEventListener('resize', scheduleContainerScaleUpdate, { passive: true });
     window.addEventListener('orientationchange', scheduleContainerScaleUpdate, { passive: true });
     window.addEventListener('load', scheduleContainerScaleUpdate, { once: true });
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', scheduleContainerScaleUpdate, { passive: true });
+    }
 
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', scheduleContainerScaleUpdate, { once: true });
