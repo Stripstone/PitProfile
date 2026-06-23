@@ -4325,7 +4325,7 @@
     }
 
 
-    async function pushLocalToTeam(teamKey, pushOverrides = {}) {
+    async function pushLocalToTeam(teamKey) {
       const pendingDeletes = deletedTransectSet();
       const deletedNames = [];
 
@@ -4348,13 +4348,7 @@
       }
 
       for (const name of names) {
-        const hasOverride = Boolean(pushOverrides[name]);
-        const sourceSnapshot = hasOverride
-          ? { ...transectStore[name], pages: pushOverrides[name] }
-          : transectStore[name];
-        if (hasOverride) syncDiag("push: using override pages for transect", { name, overridePageCount: pushOverrides[name].length });
-        const payload = transectPayload(name, sourceSnapshot);
-        syncDiag("push: payload page A extents", { name, pages: payload.pages.map(p => ({ id: p.id, extA: p.extents?.A, layerA: p.layers?.A?.hueNumber })) });
+        const payload = transectPayload(name, transectStore[name]);
         const { error } = await PitProfileBackend.rpc("stp_v2_upsert_transect", {
           p_team_key: teamKey,
           p_author_name: activeTeam.member,
@@ -4645,7 +4639,7 @@
           { choice: "keep",   label: "Keep mine",   primary: true },
           { choice: "theirs", label: "Use theirs" },
           { choice: "merge",  label: "Merge" },
-          { choice: "skip",   label: "Skip" }
+          { choice: "abort",  label: "Cancel" }
         ]
       });
 
@@ -4677,21 +4671,9 @@
 
         snap.pages = snap.pages.map(ensurePageShape);
 
-        // Collect skipped STPs: store keeps local value, but push needs remote.
-        // We pass an override page list to pushResolvedState so the push payload
-        // uses remote for skipped STPs without touching the store.
-        const hasSkipped = conflict.stpConflicts.some(s => s._skipped);
-        if (hasSkipped) {
-          conflict._pushPagesOverride = snap.pages.map(p => {
-            const skippedStp = conflict.stpConflicts.find(s => s._skipped && s.pageId === p.id);
-            return skippedStp ? clone(skippedStp.remote) : p;
-          }).map(ensurePageShape);
-        }
-
       } else if (choice === "keep") {
         // Local stays untouched
       }
-      // "skip" → nothing
     }
 
     // STP-level (reached only via Merge): Keep mine / Use theirs / Skip  — no merge
@@ -4707,7 +4689,7 @@
         buttons: [
           { choice: "keep",   label: "Keep mine", primary: true },
           { choice: "theirs", label: "Use theirs" },
-          { choice: "skip",   label: "Skip" }
+          { choice: "abort",  label: "Cancel" }
         ]
       });
 
@@ -4723,21 +4705,6 @@
         syncDiag("STP resolved: use theirs", {
           transect: transectName, stpId: stp.pageId,
           pushedValue: "remote", extents: stp.remote.extents
-        });
-      } else if (choice === "skip") {
-        // Skip: server gets remote value (local not pushed for this STP),
-        // local keeps local value. Conflict reappears next sync.
-        // Achieved by writing remote into the push payload only:
-        // store is NOT updated here, but we swap for the push by writing
-        // remote into store temporarily then restoring after push.
-        // Simpler approach: mark this page as skipped so pushLocalToTeam
-        // uses remote value for this STP in the payload.
-        // Implementation: stash remote on the stp object for the merge path to use.
-        stp._skipped = true;
-        syncDiag("STP skipped: remote preserved on server, local retained", {
-          transect: transectName, stpId: stp.pageId,
-          serverValue: "remote", localValue: "kept",
-          remoteExtents: stp.remote.extents, localExtents: stp.local.extents
         });
       } else {
         // Keep Mine: local STP pushed as authoritative
@@ -4821,22 +4788,11 @@
           if (result === "abort") { $("conflictModal").hidden = true; return "abort"; }
         }
       }
-      // Build push overrides for transects with skipped STPs
-      const pushOverrides = {};
-      for (const c of conflicts) {
-        if (c._pushPagesOverride) {
-          pushOverrides[c.transectName] = c._pushPagesOverride;
-          syncDiag("push override built for skipped STPs", {
-            transect: c.transectName,
-            pages: c._pushPagesOverride.length
-          });
-        }
-      }
       $("conflictModal").hidden = true;
       if (typeof onComplete === "function") {
         return await onComplete();
       }
-      return { resolvedKeepSet, pushOverrides };
+      return resolvedKeepSet;
     }
 
     // ── Main sync entry point ────────────────────────────────────────
@@ -4901,11 +4857,11 @@
           return { rows, ...diff };
         }
 
-        async function pushResolvedState(stage, pushOverrides = {}) {
+        async function pushResolvedState(stage) {
           alignWorkingStateToSyncedStore();
           saveLocalWorkingState();
           refreshTransectDropdown();
-          const pushed = await pushLocalToTeam(teamKey, pushOverrides);
+          const pushed = await pushLocalToTeam(teamKey);
           for (const name of pushed.deletedNames || []) syncSessionDeletedNames.add(name);
           syncDiag(`${stage} push complete`, pushed);
           return pushed;
@@ -4963,9 +4919,8 @@
             render();
             return;
           }
-          resolvedKeepSet = queueResult?.resolvedKeepSet || new Set();
-          const pushOverrides = queueResult?.pushOverrides || {};
-          await pushResolvedState("conflict-resolution", pushOverrides);
+          resolvedKeepSet = queueResult || new Set();
+          await pushResolvedState("conflict-resolution");
         } else {
           await pushResolvedState(autoMerge.length ? "auto-merge" : "initial");
         }
