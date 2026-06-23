@@ -4718,6 +4718,15 @@
       ensureDefaultTransectAvailable();
       pendingAction = null;
 
+      // Flush any unsaved working state into the store before diffing or pushing.
+      // Without this, edits made since the last explicit save are invisible to the
+      // sync engine and get overwritten by the remote version after settlement.
+      if (dirtyTransect && activeTransectName) {
+        transectStore[activeTransectName] = snapshotTransect();
+        dirtyTransect = false;
+        syncDiag("flushed dirty working state", { name: activeTransectName });
+      }
+
       try {
         showStatus(joinLoadOnly ? "Loading team…" : "Syncing…");
 
