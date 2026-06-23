@@ -4032,10 +4032,11 @@
       } else {
         console.log("[STP sync]", message, data ?? "");
       }
+      if (window.__ppDiag) window.__ppDiag.logEntry(message, data);
     }
 
     function clearSyncDiag() {
-      // diagnostics are console-only; nothing to clear in UI
+      if (window.__ppSyncDiagLog) window.__ppSyncDiagLog = [];
     }
 
     async function teamKeyFor(name, code) {
@@ -4819,6 +4820,7 @@
           saveLocalWorkingState();
           refreshTransectDropdown();
           render();
+          if (window.__ppDiag) window.__ppDiag.syncFail("conflicts remain after resolution");
           showStatus("Couldn’t sync.");
           return;
         }
@@ -4827,6 +4829,7 @@
         saveLocalWorkingState();
         refreshTransectDropdown();
         render();
+        if (window.__ppDiag) window.__ppDiag.syncOk(new Date().toISOString());
         showStatus("Synced.");
 
       } catch (error) {
@@ -4836,6 +4839,7 @@
           hint: error?.hint,
           code: error?.code
         });
+        if (window.__ppDiag) window.__ppDiag.syncFail(error?.message || "unknown");
         showStatus(joinLoadOnly ? "Couldn’t load team." : "Couldn’t sync.");
       }
     }
@@ -6136,16 +6140,11 @@
   </script>
 
   <!-- ============================================================
-       BEGIN PITPROFILE-VIEWPORT-DIAG v1
-       Diagnostic-only commit. Reads viewport/layout signals and
-       logs them silently on load. On-device panel is hidden behind
-       5 taps on the network-status dot — no visible debug affordance
-       in normal use. Remove this entire block (BEGIN → END) once
-       the root cause of the Play-installed footer rendering issue
-       is confirmed.
+       BEGIN PITPROFILE-DIAG v2
+       Multi-tab diagnostic panel. Hidden behind 5 taps on the
+       network-status dot. Tabs: Viewport · Sync · Local State.
        ============================================================ -->
   <style>
-    /* Panel is hidden by default; toggled via JS only. */
     #pp-diag-panel {
       display: none;
       position: fixed;
@@ -6153,31 +6152,27 @@
       left: 0;
       right: 0;
       z-index: 999999;
-      background: rgba(15, 15, 15, 0.93);
+      background: rgba(15, 15, 15, 0.95);
       color: #e2fbe8;
       font: 600 10.5px/1.55 "Courier New", monospace;
-      padding: 8px 12px 12px;
-      max-height: 52vh;
-      overflow-y: auto;
-      -webkit-overflow-scrolling: touch;
+      padding: 0;
+      max-height: 60vh;
+      overflow: hidden;
+      display: none;
+      flex-direction: column;
       border-top: 2px solid #22c55e;
       touch-action: pan-y;
     }
-    #pp-diag-panel.pp-diag-open {
-      display: block;
-    }
+    #pp-diag-panel.pp-diag-open { display: flex; }
     #pp-diag-header {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin-bottom: 6px;
+      padding: 6px 12px 0;
+      flex-shrink: 0;
     }
-    #pp-diag-title {
-      color: #86efac;
-      font-size: 10.5px;
-      letter-spacing: 0.04em;
-    }
-    #pp-diag-controls { display: flex; gap: 8px; }
+    #pp-diag-title { color: #86efac; font-size: 10.5px; letter-spacing: 0.04em; }
+    #pp-diag-controls { display: flex; gap: 6px; }
     .pp-diag-btn {
       background: rgba(255,255,255,0.09);
       border: 1px solid rgba(255,255,255,0.20);
@@ -6189,69 +6184,120 @@
       touch-action: manipulation;
     }
     .pp-diag-btn:active { background: rgba(255,255,255,0.20); }
-    #pp-diag-table { width: 100%; border-collapse: collapse; }
-    #pp-diag-table tr:nth-child(even) td { background: rgba(255,255,255,0.03); }
-    #pp-diag-table td {
-      padding: 1.5px 6px;
-      vertical-align: top;
-      white-space: nowrap;
+    #pp-diag-tabs {
+      display: flex;
+      gap: 0;
+      padding: 6px 12px 0;
+      flex-shrink: 0;
+      border-bottom: 1px solid rgba(74,222,128,0.2);
     }
-    #pp-diag-table td:first-child {
-      color: #6ee7b7;
-      min-width: 210px;
-      padding-right: 10px;
+    .pp-diag-tab {
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      color: #6b7280;
+      font: 700 10px "Courier New", monospace;
+      padding: 3px 10px 4px;
+      cursor: pointer;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      touch-action: manipulation;
+      margin-bottom: -1px;
     }
+    .pp-diag-tab.active { color: #4ade80; border-bottom-color: #4ade80; }
+    #pp-diag-body {
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      flex: 1;
+      padding: 6px 12px 12px;
+    }
+    .pp-diag-pane { display: none; }
+    .pp-diag-pane.active { display: block; }
+    .pp-diag-table { width: 100%; border-collapse: collapse; }
+    .pp-diag-table tr:nth-child(even) td { background: rgba(255,255,255,0.03); }
+    .pp-diag-table td { padding: 1.5px 6px; vertical-align: top; white-space: nowrap; }
+    .pp-diag-table td:first-child { color: #94a3b8; width: 58%; }
     .pp-diag-warn  { color: #fcd34d; }
     .pp-diag-alert { color: #f87171; font-weight: 900; }
     .pp-diag-note  { color: #94a3b8; font-style: italic; }
+    .pp-diag-ok    { color: #4ade80; }
+    .pp-diag-section td {
+      color: #4ade80 !important;
+      padding-top: 8px !important;
+      padding-bottom: 2px !important;
+      font-size: 10px;
+      letter-spacing: 0.06em;
+      border-bottom: 1px solid rgba(74,222,128,0.25);
+    }
     #pp-diag-snap-btn {
       margin-top: 8px;
-      display: block;
-      width: 100%;
-      text-align: center;
       background: #166534;
-      border: none;
+      border: 1px solid #15803d;
       color: #bbf7d0;
-      font: 700 10.5px "Courier New", monospace;
-      padding: 5px;
+      font: 700 10px "Courier New", monospace;
       border-radius: 5px;
+      padding: 4px 10px;
       cursor: pointer;
       touch-action: manipulation;
+      display: block;
     }
     #pp-diag-snap-btn:active { background: #15803d; }
     #pp-diag-snap-out {
-      color: #86efac;
-      font-size: 9.5px;
       margin-top: 5px;
       word-break: break-all;
       white-space: pre-wrap;
     }
+    .pp-diag-copy-btn {
+      margin-top: 6px;
+      background: #1e3a5f;
+      border: 1px solid #3b82f6;
+      color: #bfdbfe;
+      font: 700 10px "Courier New", monospace;
+      border-radius: 5px;
+      padding: 3px 8px;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
   </style>
 
-  <div id="pp-diag-panel" role="region" aria-label="Viewport diagnostic panel">
+  <div id="pp-diag-panel" role="region" aria-label="PitProfile diagnostic panel">
     <div id="pp-diag-header">
-      <span id="pp-diag-title">⬛ PitProfile Viewport Diagnostic</span>
+      <span id="pp-diag-title">⬛ PitProfile Diagnostics</span>
       <div id="pp-diag-controls">
         <button class="pp-diag-btn" id="pp-diag-refresh-btn" type="button">↺ refresh</button>
         <button class="pp-diag-btn" id="pp-diag-close-btn"   type="button">✕ close</button>
       </div>
     </div>
-    <table id="pp-diag-table"><tbody></tbody></table>
-    <button id="pp-diag-snap-btn" type="button">📋 Copy snapshot JSON to clipboard</button>
-    <div id="pp-diag-snap-out"></div>
+    <div id="pp-diag-tabs">
+      <button class="pp-diag-tab active" data-tab="viewport" type="button">Viewport</button>
+      <button class="pp-diag-tab"        data-tab="sync"     type="button">Sync</button>
+      <button class="pp-diag-tab"        data-tab="state"    type="button">Local State</button>
+    </div>
+    <div id="pp-diag-body">
+      <div class="pp-diag-pane active" id="pp-diag-pane-viewport">
+        <table class="pp-diag-table"><tbody id="pp-diag-tbody-viewport"></tbody></table>
+        <button id="pp-diag-snap-btn" type="button">📋 Copy viewport JSON</button>
+        <div id="pp-diag-snap-out"></div>
+      </div>
+      <div class="pp-diag-pane" id="pp-diag-pane-sync">
+        <table class="pp-diag-table"><tbody id="pp-diag-tbody-sync"></tbody></table>
+        <button class="pp-diag-copy-btn" id="pp-diag-sync-copy-btn" type="button">📋 Copy sync JSON</button>
+        <div id="pp-diag-sync-out"></div>
+      </div>
+      <div class="pp-diag-pane" id="pp-diag-pane-state">
+        <table class="pp-diag-table"><tbody id="pp-diag-tbody-state"></tbody></table>
+        <button class="pp-diag-copy-btn" id="pp-diag-state-copy-btn" type="button">📋 Copy state JSON</button>
+        <div id="pp-diag-state-out"></div>
+      </div>
+    </div>
   </div>
 
   <script>
   (function ppDiag() {
     'use strict';
 
-    // ── helpers ──────────────────────────────────────────────────────
-    function px(v) {
-      return Number.isFinite(v) ? v.toFixed(1) + ' px' : String(v);
-    }
+    // ── shared helpers ────────────────────────────────────────────────
 
-    // Flag values that deviate more than a threshold from a reference measurement.
-    // Used to highlight candidates without presuming which one is "correct".
     function deviationClass(value, ref) {
       if (!Number.isFinite(value) || !Number.isFinite(ref)) return '';
       var d = Math.abs(value - ref);
@@ -6260,137 +6306,15 @@
       return '';
     }
 
-    // ── measurement snapshot ─────────────────────────────────────────
-    // Collects every viewport signal relevant to the Play-installed TWA
-    // footer rendering issue. No values are treated as authoritative here;
-    // the goal is to surface which one diverges from the others so the
-    // fix can target the right boundary.
-    function snapshot() {
-      var vv      = window.visualViewport || null;
-      var dvhEl   = document.getElementById('dvh-sentinel');
-      var topbar  = document.querySelector('.shell-topbar');
-      var footer  = document.querySelector('.shell-footer');
-      var wrap    = document.querySelector('.wrap');
-      var app     = document.querySelector('.app');
-      var root    = document.documentElement;
-
-      // --- Viewport boundary candidates ---
-      var innerH   = window.innerHeight;
-      var innerW   = window.innerWidth;
-      var vvH      = vv ? vv.height      : null;
-      var vvW      = vv ? vv.width       : null;
-      var vvOT     = vv ? vv.offsetTop   : null;
-      var vvOL     = vv ? vv.offsetLeft  : null;
-      var vvScale  = vv ? vv.scale       : null;
-      var clH      = root.clientHeight;
-      var clW      = root.clientWidth;
-      var dvhH     = dvhEl ? dvhEl.offsetHeight : null;   // resolved 100svh
-      var screenH  = window.screen ? window.screen.height      : null;
-      var screenAH = window.screen ? window.screen.availHeight : null;
-
-      // Deltas relative to innerHeight (not presuming it is correct;
-      // just a convenient common reference for comparison).
-      var dvhDelta = dvhH != null ? dvhH - innerH : null;
-      var vvDelta  = vvH  != null ? vvH  - innerH : null;
-      var clDelta  = clH  - innerH;
-
-      // --- Display-mode / container context ---
-      var mqlStandalone = window.matchMedia('(display-mode: standalone)').matches;
-      var mqlMinUi      = window.matchMedia('(display-mode: minimal-ui)').matches;
-      var mqlBrowser    = window.matchMedia('(display-mode: browser)').matches;
-      var mqlFullscreen = window.matchMedia('(display-mode: fullscreen)').matches;
-      var navStandalone = !!navigator.standalone;           // iOS Safari PWA
-      var isTWA = (function() {
-        try { return !!(document.referrer && document.referrer.startsWith('android-app://')); }
-        catch(e) { return false; }
-      })();
-      var ua = navigator.userAgent;
-
-      // --- Layout element heights (scaled BCR) ---
-      var currentScale = parseFloat(getComputedStyle(root).getPropertyValue('--app-container-scale')) || 1;
-      var topbarH   = topbar ? topbar.getBoundingClientRect().height  : null;
-      var footerH   = footer ? footer.getBoundingClientRect().height  : null;
-      var wrapH     = wrap   ? wrap.getBoundingClientRect().height    : null;
-      var appStyle  = app    ? getComputedStyle(app)                  : null;
-      var appPadV   = appStyle
-        ? (parseFloat(appStyle.paddingTop) || 0) + (parseFloat(appStyle.paddingBottom) || 0)
-        : null;
-      var reservedH = (topbarH != null && footerH != null && appPadV != null)
-        ? topbarH + footerH + appPadV + 8  /* FOOTER_BREATHING_ROOM */
-        : null;
-      var totalAccountedH = (reservedH != null && wrapH != null) ? reservedH + wrapH : null;
-
-      // Which value does updateContainerScale() currently use?
-      var vvHd = (vv && vv.height) ? Math.round(vv.height) : innerH;
-      var svhHd = dvhH != null ? dvhH : innerH;
-      var scaleUsedH = Math.max(vvHd, svhHd);
-      var scaleUsedSource = (vv && vv.height)
-        ? 'max(visualViewport.height=' + vvHd + ', 100svh=' + svhHd + ')'
-        : 'window.innerHeight (vv unavailable)';
-
-      // Over-reservation flag: if the sum of reserved + wrap exceeds the value
-      // the scale logic used, the footer is likely pushed off-screen.
-      // Neutral: logged as a candidate signal, not a confirmed root cause.
-      var overReserved = totalAccountedH != null ? totalAccountedH > scaleUsedH : null;
-
-      return {
-        ts: new Date().toISOString(),
-        viewport: {
-          'window.innerHeight':              innerH,
-          'window.innerWidth':               innerW,
-          'visualViewport.height':           vvH,
-          'visualViewport.width':            vvW,
-          'visualViewport.offsetTop':        vvOT,
-          'visualViewport.offsetLeft':       vvOL,
-          'visualViewport.scale':            vvScale,
-          'documentElement.clientHeight':    clH,
-          'documentElement.clientWidth':     clW,
-          '100svh via dvh-sentinel':         dvhH,
-          'screen.height':                   screenH,
-          'screen.availHeight':              screenAH
-        },
-        deltas_vs_innerHeight: {
-          'dvh-sentinel − innerHeight':              dvhDelta,
-          'visualViewport.height − innerHeight':     vvDelta,
-          'documentElement.clientHeight − innerHeight': clDelta
-        },
-        scaleLogicInputs: {
-          'viewportHeight value used':           scaleUsedH,
-          'viewportHeight source':               scaleUsedSource,
-          '--app-container-scale':               currentScale,
-          'topbar BCR height':                   topbarH,
-          'footer BCR height':                   footerH,
-          'app vertical padding':                appPadV,
-          'reservedHeight (topbar+footer+pad+8)': reservedH,
-          'wrap BCR height':                     wrapH,
-          'totalAccountedH (reserved+wrap)':     totalAccountedH,
-          'totalAccountedH > scaleUsedH (over-reserved candidate)': overReserved
-        },
-        context: {
-          'display-mode: standalone':  mqlStandalone,
-          'display-mode: minimal-ui':  mqlMinUi,
-          'display-mode: browser':     mqlBrowser,
-          'display-mode: fullscreen':  mqlFullscreen,
-          'navigator.standalone (iOS PWA)': navStandalone,
-          'TWA referrer heuristic':    isTWA,
-          'userAgent':                 ua
-        }
-      };
-    }
-
-    // ── render table ─────────────────────────────────────────────────
-    function renderTable(snap) {
-      var tbody = document.querySelector('#pp-diag-table tbody');
+    function buildTable(tbodyId, sections) {
+      var tbody = document.getElementById(tbodyId);
       if (!tbody) return;
       tbody.innerHTML = '';
 
-      var ref = snap.viewport['window.innerHeight'];
-
-      function section(title) {
+      function sectionRow(title) {
         var tr = document.createElement('tr');
-        tr.innerHTML = '<td colspan="2" style="color:#4ade80;padding-top:8px;padding-bottom:2px;'
-          + 'font-size:10px;letter-spacing:0.06em;border-bottom:1px solid rgba(74,222,128,0.25)">'
-          + title + '</td>';
+        tr.className = 'pp-diag-section';
+        tr.innerHTML = '<td colspan="2">' + title + '</td>';
         tbody.appendChild(tr);
       }
 
@@ -6399,7 +6323,7 @@
         if (rawVal === null || rawVal === undefined) {
           display = '–';
         } else if (typeof rawVal === 'boolean') {
-          display = rawVal ? '✓ yes' : '✗ no';
+          display = rawVal ? '<span class="pp-diag-ok">✓ yes</span>' : '✗ no';
         } else if (typeof rawVal === 'number') {
           display = Number.isFinite(rawVal) ? rawVal.toFixed(1) + ' px' : String(rawVal);
         } else {
@@ -6424,126 +6348,340 @@
         tbody.appendChild(tr);
       }
 
-      // SECTION 1: all four boundary candidates
-      section('VIEWPORT BOUNDARY CANDIDATES');
-      row('window.innerHeight',           ref);
-      row('visualViewport.height',
-          snap.viewport['visualViewport.height'],
-          deviationClass(snap.viewport['visualViewport.height'], ref),
-          snap.viewport['visualViewport.height'] == null ? 'API unavailable' : null);
-      row('documentElement.clientHeight', snap.viewport['documentElement.clientHeight'],
-          deviationClass(snap.viewport['documentElement.clientHeight'], ref));
-      row('100svh via dvh-sentinel',      snap.viewport['100svh via dvh-sentinel'],
-          deviationClass(snap.viewport['100svh via dvh-sentinel'], ref),
-          snap.viewport['100svh via dvh-sentinel'] == null ? 'sentinel missing' : null);
-
-      // SECTION 2: deltas — the key evidence
-      section('DELTAS vs window.innerHeight  (yellow >6 px · red >40 px)');
-      deltaRow('dvh-sentinel − innerHeight',              snap.deltas_vs_innerHeight['dvh-sentinel − innerHeight']);
-      deltaRow('visualViewport.height − innerHeight',     snap.deltas_vs_innerHeight['visualViewport.height − innerHeight']);
-      deltaRow('clientHeight − innerHeight',              snap.deltas_vs_innerHeight['documentElement.clientHeight − innerHeight']);
-
-      // SECTION 3: additional viewport signals
-      section('ADDITIONAL VIEWPORT SIGNALS');
-      row('window.innerWidth',             snap.viewport['window.innerWidth']);
-      row('visualViewport.width',          snap.viewport['visualViewport.width']);
-      row('visualViewport.offsetTop',      snap.viewport['visualViewport.offsetTop']);
-      row('visualViewport.offsetLeft',     snap.viewport['visualViewport.offsetLeft']);
-      row('visualViewport.scale',          snap.viewport['visualViewport.scale']);
-      row('screen.height',                 snap.viewport['screen.height']);
-      row('screen.availHeight',            snap.viewport['screen.availHeight']);
-
-      // SECTION 4: scale logic inputs
-      section('SCALE LOGIC INPUTS  (updateContainerScale)');
-      var sl = snap.scaleLogicInputs;
-      row('viewportHeight value used',        sl['viewportHeight value used']);
-      row('viewportHeight source',            sl['viewportHeight source'],    '', null);
-      row('--app-container-scale',            sl['--app-container-scale'],    '', null);
-      row('topbar BCR height',                sl['topbar BCR height']);
-      row('footer BCR height',                sl['footer BCR height']);
-      row('app vertical padding',             sl['app vertical padding']);
-      row('reservedHeight (t+f+pad+8)',        sl['reservedHeight (topbar+footer+pad+8)']);
-      row('wrap BCR height',                  sl['wrap BCR height']);
-      row('totalAccountedH (reserved+wrap)',  sl['totalAccountedH (reserved+wrap)']);
-      var over = sl['totalAccountedH > scaleUsedH (over-reserved candidate)'];
-      row('over-reserved candidate?', over === true ? '⚠ yes' : over === false ? 'no' : '–',
-          over === true ? 'pp-diag-warn' : '');
-
-      // SECTION 5: container / display-mode context
-      section('CONTAINER / DISPLAY-MODE CONTEXT');
-      var ctx = snap.context;
-      row('display-mode: standalone',      ctx['display-mode: standalone']);
-      row('display-mode: minimal-ui',      ctx['display-mode: minimal-ui']);
-      row('display-mode: browser',         ctx['display-mode: browser']);
-      row('display-mode: fullscreen',      ctx['display-mode: fullscreen']);
-      row('navigator.standalone (iOS)',    ctx['navigator.standalone (iOS PWA)']);
-      row('TWA referrer heuristic',        ctx['TWA referrer heuristic'],
-          ctx['TWA referrer heuristic'] ? 'pp-diag-warn' : '');
-      row('userAgent',                     ctx['userAgent'], '', null);
-
-      var stamp = document.createElement('tr');
-      stamp.innerHTML = '<td colspan="2" style="color:#6b7280;font-size:9px;padding-top:7px">'
-        + 'snapshot at ' + snap.ts + '</td>';
-      tbody.appendChild(stamp);
+      sections(sectionRow, row, deltaRow);
     }
 
-    // ── clipboard helper ─────────────────────────────────────────────
-    function copySnapshot() {
-      var snap = snapshot();
-      var json = JSON.stringify(snap, null, 2);
-      var out  = document.getElementById('pp-diag-snap-out');
-
-      function onSuccess() {
-        if (out) out.textContent = '✓ Copied to clipboard.';
-      }
-      function onFail() {
-        // Final fallback: render JSON as selectable text in the panel.
-        if (out) out.textContent = json;
-      }
-
-      // Primary: async Clipboard API (requires secure context + focus).
+    function copyJson(obj, outId) {
+      var json = JSON.stringify(obj, null, 2);
+      var out = document.getElementById(outId);
+      function onSuccess() { if (out) out.textContent = '✓ Copied.'; }
+      function onFail()    { if (out) out.textContent = json; }
       if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(json).then(onSuccess).catch(function() {
-          // Secondary: execCommand fallback for WebViews that block the
-          // Clipboard API even on user gesture (TWA, older Android WebView).
-          var ta = document.createElement('textarea');
-          ta.value = json;
-          ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0';
-          document.body.appendChild(ta);
-          ta.focus();
-          ta.select();
-          try {
-            var ok = document.execCommand('copy');
-            if (ok) { onSuccess(); } else { onFail(); }
-          } catch(e) { onFail(); }
-          document.body.removeChild(ta);
-        });
+        navigator.clipboard.writeText(json).then(onSuccess).catch(onFail);
       } else {
-        // execCommand path for browsers without Clipboard API at all.
         var ta = document.createElement('textarea');
         ta.value = json;
         ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0';
         document.body.appendChild(ta);
-        ta.focus();
-        ta.select();
-        try {
-          var ok = document.execCommand('copy');
-          if (ok) { onSuccess(); } else { onFail(); }
-        } catch(e) { onFail(); }
+        ta.focus(); ta.select();
+        try { document.execCommand('copy') ? onSuccess() : onFail(); } catch(e) { onFail(); }
         document.body.removeChild(ta);
       }
-
-      console.group('[PitProfile Viewport Diagnostic] manual snapshot');
-      console.log(snap);
-      console.groupEnd();
     }
 
-    // ── panel open / close ───────────────────────────────────────────
+    // ── TAB 1: Viewport ───────────────────────────────────────────────
+
+    function viewportSnapshot() {
+      var vv     = window.visualViewport || null;
+      var dvhEl  = document.getElementById('dvh-sentinel');
+      var topbar = document.querySelector('.shell-topbar');
+      var footer = document.querySelector('.shell-footer');
+      var wrap   = document.querySelector('.wrap');
+      var app    = document.querySelector('.app');
+      var root   = document.documentElement;
+
+      var innerH   = window.innerHeight;
+      var innerW   = window.innerWidth;
+      var vvH      = vv ? vv.height      : null;
+      var vvW      = vv ? vv.width       : null;
+      var vvOT     = vv ? vv.offsetTop   : null;
+      var vvOL     = vv ? vv.offsetLeft  : null;
+      var vvScale  = vv ? vv.scale       : null;
+      var clH      = root.clientHeight;
+      var clW      = root.clientWidth;
+      var dvhH     = dvhEl ? dvhEl.offsetHeight : null;
+      var screenH  = window.screen ? window.screen.height      : null;
+      var screenAH = window.screen ? window.screen.availHeight : null;
+
+      var dvhDelta = dvhH != null ? dvhH - innerH : null;
+      var vvDelta  = vvH  != null ? vvH  - innerH : null;
+      var clDelta  = clH  - innerH;
+
+      var mqlStandalone = window.matchMedia('(display-mode: standalone)').matches;
+      var mqlMinUi      = window.matchMedia('(display-mode: minimal-ui)').matches;
+      var mqlBrowser    = window.matchMedia('(display-mode: browser)').matches;
+      var navStandalone = !!navigator.standalone;
+      var isTWA = (function() {
+        try { return !!(document.referrer && document.referrer.startsWith('android-app://')); }
+        catch(e) { return false; }
+      })();
+
+      var currentScale = parseFloat(getComputedStyle(root).getPropertyValue('--app-container-scale')) || 1;
+      var lockedFloor  = parseFloat(getComputedStyle(root).getPropertyValue('--pp-diag-locked-floor') || '0') || null;
+      var topbarH   = topbar ? topbar.getBoundingClientRect().height : null;
+      var footerH   = footer ? footer.getBoundingClientRect().height : null;
+      var wrapH     = wrap   ? wrap.getBoundingClientRect().height   : null;
+      var appStyle  = app    ? getComputedStyle(app) : null;
+      var appPadV   = appStyle
+        ? (parseFloat(appStyle.paddingTop) || 0) + (parseFloat(appStyle.paddingBottom) || 0) : null;
+      var reservedH = (topbarH != null && footerH != null && appPadV != null)
+        ? topbarH + footerH + appPadV + 8 : null;
+      var totalH = (reservedH != null && wrapH != null) ? reservedH + wrapH : null;
+
+      var vvHd = (vv && vv.height) ? Math.round(vv.height) : innerH;
+      var svhHd = dvhH != null ? dvhH : innerH;
+      var scaleUsedH = Math.max(vvHd, svhHd);
+      var overReserved = totalH != null ? totalH > scaleUsedH : null;
+
+      return {
+        ts: new Date().toISOString(),
+        viewport: { innerH, innerW, vvH, vvW, vvOT, vvOL, vvScale, clH, clW, dvhH, screenH, screenAH },
+        deltas: { dvhDelta, vvDelta, clDelta },
+        scale: { scaleUsedH, currentScale, topbarH, footerH, appPadV, reservedH, wrapH, totalH, overReserved },
+        context: { mqlStandalone, mqlMinUi, mqlBrowser, navStandalone, isTWA, ua: navigator.userAgent }
+      };
+    }
+
+    function renderViewport() {
+      var snap = viewportSnapshot();
+      var ref  = snap.viewport.innerH;
+      buildTable('pp-diag-tbody-viewport', function(section, row, deltaRow) {
+        section('VIEWPORT BOUNDARY CANDIDATES');
+        row('window.innerHeight',           ref);
+        row('visualViewport.height',        snap.viewport.vvH,  deviationClass(snap.viewport.vvH, ref),  snap.viewport.vvH == null ? 'API unavailable' : null);
+        row('documentElement.clientHeight', snap.viewport.clH,  deviationClass(snap.viewport.clH, ref));
+        row('100svh via dvh-sentinel',      snap.viewport.dvhH, deviationClass(snap.viewport.dvhH, ref), snap.viewport.dvhH == null ? 'sentinel missing' : null);
+
+        section('DELTAS vs window.innerHeight  (yellow >6px · red >40px)');
+        deltaRow('dvh-sentinel − innerHeight',        snap.deltas.dvhDelta);
+        deltaRow('visualViewport.height − innerHeight', snap.deltas.vvDelta);
+        deltaRow('clientHeight − innerHeight',        snap.deltas.clDelta);
+
+        section('MOBILE LOCK  (< 550px width)');
+        var isMobile = snap.viewport.innerW < 550;
+        row('mobile lock active?', isMobile ? 'yes' : 'no — tablet/desktop path', isMobile ? 'pp-diag-ok' : '');
+        row('window.innerWidth', snap.viewport.innerW);
+
+        section('SCALE LOGIC INPUTS');
+        row('viewportHeight used',        snap.scale.scaleUsedH);
+        row('--app-container-scale',      snap.scale.currentScale, '', null);
+        row('topbar BCR height',          snap.scale.topbarH);
+        row('footer BCR height',          snap.scale.footerH);
+        row('app vertical padding',       snap.scale.appPadV);
+        row('reservedHeight',             snap.scale.reservedH);
+        row('wrap BCR height',            snap.scale.wrapH);
+        row('totalAccountedH',            snap.scale.totalH);
+        var over = snap.scale.overReserved;
+        row('over-reserved?', over === true ? '⚠ yes' : over === false ? 'no' : '–', over ? 'pp-diag-warn' : '');
+
+        section('DISPLAY-MODE CONTEXT');
+        row('display-mode: standalone',   snap.context.mqlStandalone);
+        row('display-mode: minimal-ui',   snap.context.mqlMinUi);
+        row('display-mode: browser',      snap.context.mqlBrowser);
+        row('navigator.standalone (iOS)', snap.context.navStandalone);
+        row('TWA referrer heuristic',     snap.context.isTWA, snap.context.isTWA ? 'pp-diag-warn' : '');
+        row('userAgent',                  snap.context.ua, '', null);
+
+        var tr = document.createElement('tr');
+        tr.innerHTML = '<td colspan="2" style="color:#6b7280;font-size:9px;padding-top:7px">snapshot at ' + snap.ts + '</td>';
+        document.getElementById('pp-diag-tbody-viewport').appendChild(tr);
+      });
+      return snap;
+    }
+
+    // ── TAB 2: Sync ───────────────────────────────────────────────────
+
+    function syncSnapshot() {
+      // Pull from the app's sync diagnostic log if available
+      var diagLog = (typeof window.__ppSyncDiagLog !== 'undefined') ? window.__ppSyncDiagLog : [];
+      var backend = (typeof window.PitProfileBackend !== 'undefined')
+        ? window.PitProfileBackend.mode : 'unknown';
+
+      // Last sync result
+      var lastSyncStatus = window.__ppLastSyncStatus || null;
+      var lastSyncTime   = window.__ppLastSyncTime   || null;
+      var lastSyncError  = window.__ppLastSyncError  || null;
+
+      // Sim db if in sim mode
+      var simDb = null;
+      try {
+        var raw = localStorage.getItem('pitprofile-sim-supabase-v1');
+        if (raw) simDb = JSON.parse(raw);
+      } catch(e) {}
+
+      // Tombstone set
+      var tombstones = [];
+      try {
+        var ts = localStorage.getItem('munsell-stp-deleted-transects-v2');
+        if (ts) tombstones = JSON.parse(ts);
+      } catch(e) {}
+
+      // Active team from main save key
+      var activeTeam = null;
+      try {
+        var ls = localStorage.getItem('munsell-stp-displayer-v3');
+        if (ls) {
+          var parsed = JSON.parse(ls);
+          activeTeam = parsed.activeTeam || null;
+        }
+      } catch(e) {}
+
+      return {
+        ts: new Date().toISOString(),
+        backend,
+        activeTeam,
+        tombstones,
+        lastSyncStatus,
+        lastSyncTime,
+        lastSyncError,
+        diagLog: diagLog.slice(-30),   // last 30 entries
+        simTeams: simDb ? Object.keys(simDb.teams || {}).length : null,
+        simTransects: simDb ? Object.values(simDb.teams || {}).reduce(function(n, t) {
+          return n + Object.keys(t.transects || {}).length;
+        }, 0) : null
+      };
+    }
+
+    function renderSync() {
+      var snap = syncSnapshot();
+      buildTable('pp-diag-tbody-sync', function(section, row) {
+        section('BACKEND');
+        row('mode', snap.backend, snap.backend === 'sim' ? 'pp-diag-warn' : 'pp-diag-ok');
+        row('navigator.onLine', navigator.onLine, navigator.onLine ? 'pp-diag-ok' : 'pp-diag-alert');
+
+        section('ACTIVE TEAM');
+        if (snap.activeTeam) {
+          row('team name',   snap.activeTeam.name   || '–');
+          row('team code',   snap.activeTeam.code   || '–');
+          row('member name', snap.activeTeam.member || '–');
+        } else {
+          row('status', 'not in a team', 'pp-diag-note');
+        }
+
+        section('LAST SYNC');
+        row('result',    snap.lastSyncStatus || '–', snap.lastSyncStatus === 'ok' ? 'pp-diag-ok' : snap.lastSyncStatus ? 'pp-diag-alert' : '');
+        row('time',      snap.lastSyncTime   || '–');
+        row('error',     snap.lastSyncError  || 'none', snap.lastSyncError ? 'pp-diag-alert' : 'pp-diag-note');
+
+        section('PENDING TOMBSTONES');
+        row('count', snap.tombstones.length, snap.tombstones.length ? 'pp-diag-warn' : 'pp-diag-ok');
+        snap.tombstones.forEach(function(name) { row('  ↳', name); });
+
+        if (snap.backend === 'sim') {
+          section('SIM DATABASE');
+          row('teams',     snap.simTeams,     null);
+          row('transects', snap.simTransects, null);
+        }
+
+        section('SYNC DIAG LOG  (last 30)');
+        if (!snap.diagLog.length) {
+          row('(empty — sync not yet run)', '', 'pp-diag-note');
+        } else {
+          snap.diagLog.forEach(function(entry) {
+            row(entry.msg, entry.data ? JSON.stringify(entry.data).slice(0, 80) : '', '');
+          });
+        }
+
+        var tr = document.createElement('tr');
+        tr.innerHTML = '<td colspan="2" style="color:#6b7280;font-size:9px;padding-top:7px">snapshot at ' + snap.ts + '</td>';
+        document.getElementById('pp-diag-tbody-sync').appendChild(tr);
+      });
+      return snap;
+    }
+
+    // ── TAB 3: Local State ────────────────────────────────────────────
+
+    function stateSnapshot() {
+      var raw = null;
+      var parsed = null;
+      try {
+        raw = localStorage.getItem('munsell-stp-displayer-v3');
+        if (raw) parsed = JSON.parse(raw);
+      } catch(e) {}
+
+      var transects = parsed ? Object.keys(parsed.transects || {}) : [];
+      var activeTransect = parsed ? (parsed.activeTransectName || parsed.contextLabel || '') : '';
+      var dirty = parsed ? Boolean(parsed.dirtyTransect) : null;
+      var activeTeam = parsed ? (parsed.activeTeam || null) : null;
+      var pageCount = {};
+      if (parsed && parsed.transects) {
+        Object.entries(parsed.transects).forEach(function(kv) {
+          pageCount[kv[0]] = Array.isArray(kv[1].pages) ? kv[1].pages.length : 0;
+        });
+      }
+
+      var tombstones = [];
+      try {
+        var ts = localStorage.getItem('munsell-stp-deleted-transects-v2');
+        if (ts) tombstones = JSON.parse(ts);
+      } catch(e) {}
+
+      var lsBytes = raw ? raw.length : 0;
+
+      return {
+        ts: new Date().toISOString(),
+        transects,
+        pageCount,
+        activeTransect,
+        dirty,
+        activeTeam: activeTeam ? { name: activeTeam.name, member: activeTeam.member } : null,
+        tombstones,
+        lsBytes
+      };
+    }
+
+    function renderState() {
+      var snap = stateSnapshot();
+      buildTable('pp-diag-tbody-state', function(section, row) {
+        section('TRANSECT STORE');
+        row('count', snap.transects.length, '', null);
+        row('active transect', snap.activeTransect || '–');
+        row('dirty (unsaved edits)?', snap.dirty, snap.dirty ? 'pp-diag-warn' : 'pp-diag-ok');
+        snap.transects.forEach(function(name) {
+          row('  ↳ ' + name, (snap.pageCount[name] || 0) + ' STPs');
+        });
+
+        section('TOMBSTONE SET');
+        row('pending deletes', snap.tombstones.length, snap.tombstones.length ? 'pp-diag-warn' : 'pp-diag-ok');
+        snap.tombstones.forEach(function(name) { row('  ↳', name); });
+
+        section('ACTIVE TEAM');
+        if (snap.activeTeam) {
+          row('team name',   snap.activeTeam.name   || '–');
+          row('member name', snap.activeTeam.member || '–');
+        } else {
+          row('status', 'not in a team', 'pp-diag-note');
+        }
+
+        section('STORAGE');
+        var kb = (snap.lsBytes / 1024).toFixed(1);
+        row('save key size', kb + ' KB', parseFloat(kb) > 400 ? 'pp-diag-warn' : '');
+
+        var tr = document.createElement('tr');
+        tr.innerHTML = '<td colspan="2" style="color:#6b7280;font-size:9px;padding-top:7px">snapshot at ' + snap.ts + '</td>';
+        document.getElementById('pp-diag-tbody-state').appendChild(tr);
+      });
+      return snap;
+    }
+
+    // ── Tab switching ─────────────────────────────────────────────────
+
+    var activeTab = 'viewport';
+
+    function switchTab(name) {
+      activeTab = name;
+      document.querySelectorAll('.pp-diag-tab').forEach(function(btn) {
+        btn.classList.toggle('active', btn.dataset.tab === name);
+      });
+      document.querySelectorAll('.pp-diag-pane').forEach(function(pane) {
+        pane.classList.toggle('active', pane.id === 'pp-diag-pane-' + name);
+      });
+      refreshActiveTab();
+    }
+
+    function refreshActiveTab() {
+      if (activeTab === 'viewport') renderViewport();
+      else if (activeTab === 'sync')  renderSync();
+      else if (activeTab === 'state') renderState();
+    }
+
+    // ── Panel open / close ────────────────────────────────────────────
+
     function openPanel() {
       var panel = document.getElementById('pp-diag-panel');
       if (panel) {
         panel.classList.add('pp-diag-open');
-        renderTable(snapshot());
+        refreshActiveTab();
       }
     }
     function closePanel() {
@@ -6551,66 +6689,68 @@
       if (panel) panel.classList.remove('pp-diag-open');
     }
 
-    // ── 5-tap unlock on the network-status dot ───────────────────────
-    // Attaches to [data-network-status] (the existing Online/Offline indicator).
-    // Five taps/clicks within 2 s open the diagnostic panel. No visible
-    // affordance is added; the gesture is intentional and undocumented.
+    // ── 5-tap unlock on network-status dot ───────────────────────────
+
     function attachTapUnlock() {
       var dot = document.querySelector('[data-network-status]');
       if (!dot) return;
-      var tapCount  = 0;
-      var tapTimer  = null;
-      var TAP_LIMIT = 5;
-      var TAP_WINDOW_MS = 2000;
-
+      var tapCount = 0, tapTimer = null;
       dot.addEventListener('click', function() {
         tapCount++;
         if (tapTimer) clearTimeout(tapTimer);
-        if (tapCount >= TAP_LIMIT) {
-          tapCount = 0;
-          openPanel();
-          return;
-        }
-        tapTimer = setTimeout(function() { tapCount = 0; }, TAP_WINDOW_MS);
+        if (tapCount >= 5) { tapCount = 0; openPanel(); return; }
+        tapTimer = setTimeout(function() { tapCount = 0; }, 2000);
       }, { passive: true });
     }
 
-    // ── wire up panel buttons ────────────────────────────────────────
+    // ── Wire buttons ──────────────────────────────────────────────────
+
     function wireButtons() {
       var closeBtn   = document.getElementById('pp-diag-close-btn');
       var refreshBtn = document.getElementById('pp-diag-refresh-btn');
       var snapBtn    = document.getElementById('pp-diag-snap-btn');
+      var syncCopy   = document.getElementById('pp-diag-sync-copy-btn');
+      var stateCopy  = document.getElementById('pp-diag-state-copy-btn');
 
-      if (closeBtn)   closeBtn.addEventListener('click',   closePanel);
-      if (refreshBtn) refreshBtn.addEventListener('click', function() { renderTable(snapshot()); });
-      if (snapBtn)    snapBtn.addEventListener('click',    copySnapshot);
+      if (closeBtn)   closeBtn.addEventListener('click', closePanel);
+      if (refreshBtn) refreshBtn.addEventListener('click', refreshActiveTab);
+      if (snapBtn)    snapBtn.addEventListener('click', function() { copyJson(viewportSnapshot(), 'pp-diag-snap-out'); });
+      if (syncCopy)   syncCopy.addEventListener('click', function() { copyJson(syncSnapshot(),    'pp-diag-sync-out'); });
+      if (stateCopy)  stateCopy.addEventListener('click', function() { copyJson(stateSnapshot(),  'pp-diag-state-out'); });
 
-      // Keep panel live on resize / orientation change
+      document.querySelectorAll('.pp-diag-tab').forEach(function(btn) {
+        btn.addEventListener('click', function() { switchTab(btn.dataset.tab); });
+      });
+
       window.addEventListener('resize', function() {
         var panel = document.getElementById('pp-diag-panel');
-        if (panel && panel.classList.contains('pp-diag-open')) renderTable(snapshot());
-      }, { passive: true });
-      window.addEventListener('orientationchange', function() {
-        setTimeout(function() {
-          var panel = document.getElementById('pp-diag-panel');
-          if (panel && panel.classList.contains('pp-diag-open')) renderTable(snapshot());
-        }, 300);
+        if (panel && panel.classList.contains('pp-diag-open') && activeTab === 'viewport') {
+          renderViewport();
+        }
       }, { passive: true });
     }
 
-    // ── silent console log on load (always fires) ────────────────────
+    // ── Expose sync result hooks for the app to call ──────────────────
+    // syncTeamConfirmed should call these to populate the Sync tab.
+    window.__ppDiag = {
+      syncOk:    function(ts)  { window.__ppLastSyncStatus = 'ok';    window.__ppLastSyncTime = ts; window.__ppLastSyncError = null; },
+      syncFail:  function(err) { window.__ppLastSyncStatus = 'error'; window.__ppLastSyncTime = new Date().toISOString(); window.__ppLastSyncError = String(err || 'unknown'); },
+      logEntry:  function(msg, data) {
+        if (!window.__ppSyncDiagLog) window.__ppSyncDiagLog = [];
+        window.__ppSyncDiagLog.push({ msg: msg, data: data || null, ts: new Date().toISOString() });
+        if (window.__ppSyncDiagLog.length > 200) window.__ppSyncDiagLog.shift();
+      }
+    };
+
+    // ── Silent console log on load ────────────────────────────────────
     function silentLog() {
-      var snap = snapshot();
-      console.group('[PitProfile Viewport Diagnostic] load snapshot');
-      console.log('Full snapshot:', snap);
-      console.table(snap.viewport);
-      console.table(snap.deltas_vs_innerHeight);
-      console.table(snap.scaleLogicInputs);
-      console.table(snap.context);
+      var snap = viewportSnapshot();
+      console.group('[PitProfile Diag] load snapshot');
+      console.log('viewport:', snap);
       console.groupEnd();
     }
 
-    // ── init ─────────────────────────────────────────────────────────
+    // ── Init ──────────────────────────────────────────────────────────
     function init() {
       wireButtons();
       attachTapUnlock();
@@ -6624,7 +6764,8 @@
     }
   })();
   </script>
-  <!-- END PITPROFILE-VIEWPORT-DIAG v1 -->
+  <!-- END PITPROFILE-DIAG v2 -->
+
 
 </body>
 </html>
