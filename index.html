@@ -4094,15 +4094,20 @@
       updateTeamDisplay();
     }
 
-    function clearActiveTeam() {
+    function clearActiveTeam(keepLocalData = false) {
+      if (!keepLocalData) {
+        transectStore = {};
+        try { localStorage.removeItem("munsell-stp-deleted-transects-v2"); } catch {}
+        ensureDefaultTransectAvailable();
+      }
       clearActiveTeamSession();
       hideTeamJoinPanel();
-      showStatus("Left team.");
+      showStatus(keepLocalData ? "Left team. Local data kept." : "Left team. Local data cleared.");
     }
 
     function requestLeaveTeam() {
       if (!activeTeam?.name) return;
-      setPending("leave-team", `Leave ${activeTeam.name}? Local transects will stay on this device, but team sync will stop until you join again.`);
+      setPending("leave-team", `Leave ${activeTeam.name}? Your local transects will be cleared. Keep a copy?`);
     }
 
     function showTeamJoinPanel() {
@@ -4137,6 +4142,11 @@
 
       if (!name || !code || !member) {
         showStatus("Fill team fields.");
+        return;
+      }
+
+      if (navigator.onLine === false) {
+        showStatus("No connection. Check your network and try again.");
         return;
       }
 
@@ -4439,8 +4449,9 @@
             }
           }
 
-          if (stpConflicts.length || newRemotePages.length) {
-            // Surface at transect level
+          if (stpConflicts.length) {
+            // Real conflict — surface for manual resolution.
+            // Include newRemotePages so the merge path can auto-add them.
             conflicts.push({
               type: "transect-conflict",
               transectName: name,
@@ -4448,6 +4459,11 @@
               newRemotePages,
               remoteSnapshot: row.data
             });
+          } else if (newRemotePages.length) {
+            // Purely additive — teammate added STPs, nothing conflicts. Auto-merge.
+            for (const p of newRemotePages) {
+              autoMerge.push({ type: "add-page", transectName: name, page: p });
+            }
           }
           // Exact matches or local-only new pages — no action needed
         }
@@ -4505,13 +4521,29 @@
       ).join("");
 
       return new Promise(resolve => {
+        function dismiss(choice) {
+          actsEl.onclick = null;
+          document.removeEventListener("keydown", onKey);
+          window.removeEventListener("popstate", onPopState);
+          modal.hidden = true;
+          resolve(choice);
+        }
+
         actsEl.onclick = (e) => {
           const btn = e.target.closest("[data-choice]");
           if (!btn) return;
-          actsEl.onclick = null;
-          modal.hidden = true;
-          resolve(btn.dataset.choice);
+          dismiss(btn.dataset.choice);
         };
+
+        // Escape key — treat as skip so the sync can complete
+        function onKey(e) {
+          if (e.key === "Escape") dismiss("skip");
+        }
+        document.addEventListener("keydown", onKey);
+
+        // Android back button (popstate) — treat as skip
+        function onPopState() { dismiss("skip"); }
+        window.addEventListener("popstate", onPopState, { once: true });
       });
     }
 
@@ -4524,6 +4556,14 @@
       const parts      = [];
       if (nConflicts) parts.push(`${nConflicts} STP${nConflicts > 1 ? "s" : ""} differ`);
       if (nNew)       parts.push(`${nNew} new STP${nNew > 1 ? "s" : ""} from team`);
+
+      // Warn about local-only STPs that "Use theirs" would silently drop.
+      const localById  = {};
+      for (const p of (transectStore[conflict.transectName]?.pages || [])) localById[p.id] = true;
+      const remoteById = {};
+      for (const p of (conflict.remoteSnapshot?.pages || [])) remoteById[p.id] = true;
+      const nLocalOnly = Object.keys(localById).filter(id => !remoteById[id]).length;
+      if (nLocalOnly) parts.push(`${nLocalOnly} of your STP${nLocalOnly > 1 ? "s" : ""} not on team`);
 
       const choice = await renderConflictModal({
         title:   conflict.transectName,
@@ -5361,7 +5401,7 @@
         } else if (pendingAction.type === "clear-all-transects") {
           yes.textContent = "Clear All"; no.textContent = "Cancel"; no.style.display = "";
         } else if (pendingAction.type === "leave-team") {
-          yes.textContent = "Leave"; no.textContent = "Cancel"; no.style.display = "";
+          yes.textContent = "Leave & Clear"; no.textContent = "Keep Copy"; no.style.display = "";
         } else if (pendingAction.type === "switch-transect") {
           yes.textContent = "Discard"; no.textContent = "Cancel"; no.style.display = "";
         } else if (pendingAction.type === "save-file-dirty") {
@@ -5630,6 +5670,13 @@
     });
 
     $("confirmNo").addEventListener("click", () => {
+      if (pendingAction?.type === "leave-team") {
+        // "No" on the leave prompt means "Keep Copy" — leave but retain local data
+        pendingAction = null;
+        clearActiveTeam(true);
+        return;
+      }
+
       if (pendingAction?.type === "save-file-dirty") {
         pendingAction = null;
         dirtyTransect = false;
