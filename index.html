@@ -3264,6 +3264,45 @@
       }
     };
 
+    // Test harness API
+    window.PitProfileTest = {
+      async syncNow() {
+        if (window.__ppSyncDiagLog) window.__ppSyncDiagLog = [];
+        await syncTeamConfirmed();
+        return window.__ppSyncDiagLog ? [...window.__ppSyncDiagLog] : [];
+      },
+      setLocalTransect(name, pages) {
+        const p = Array.isArray(pages) ? pages : [pages];
+        transectStore[name] = { name, pageIndex: 0, renderDepth: 100, pages: clone(p) };
+        activeTransectName = name;
+        dirtyTransect = false;
+        saveLocalWorkingState();
+      },
+      markDirty() { dirtyTransect = true; },
+      getLocalStore() { return clone(transectStore); },
+      getActiveTeam()  { return clone(activeTeam); },
+      getDirty()       { return dirtyTransect; },
+      getTombstones()  { return [...deletedTransectSet()]; },
+      getPages()       { return clone(pages); },
+      async joinTeam(name, code, member) {
+        activeTeam = { name, code, member };
+        saveLocalWorkingState();
+        updateTeamDisplay();
+        await syncTeamConfirmed({ joinLoadOnly: true, teamWasCreated: false });
+      },
+      resetLocal() {
+        transectStore = {};
+        activeTeam = null;
+        dirtyTransect = false;
+        activeTransectName = "";
+        try { localStorage.removeItem("munsell-stp-deleted-transects-v2"); } catch(e) {}
+        ensureDefaultTransectAvailable();
+        saveLocalWorkingState();
+        updateTeamDisplay();
+        render();
+      }
+    };
+
 
     function parsePositiveCm(value) {
       const match = String(value).match(/\d+(?:\.\d+)?/);
