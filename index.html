@@ -4079,7 +4079,7 @@
     }
 
     async function teamKeyFor(name, code) {
-      syncDiag("team key requested");
+      syncDiag("transport: team key requested");
       const { data, error } = await PitProfileBackend.rpc("stp_v2_team_key", {
         p_team_name: name,
         p_team_code: code
@@ -4088,7 +4088,7 @@
         console.error("stp_v2_team_key failed", JSON.stringify(error));
         throw new Error(error.message || "Team key failed");
       }
-      syncDiag("team key received", { hasKey: Boolean(data) });
+      syncDiag("transport: team key received", { hasKey: Boolean(data) });
       return data;
     }
 
@@ -4198,21 +4198,21 @@
       showStatus("Verifying team…");
 
       try {
-        syncDiag("create/join requested", { teamName: name, member, hadActiveTeam: Boolean(previousTeam?.name) });
+        syncDiag("transport: create/join requested", { teamName: name, member, hadActiveTeam: Boolean(previousTeam?.name) });
         const { data, error } = await PitProfileBackend.rpc("stp_v2_create_or_join_team", {
           p_team_name: name,
           p_team_code: code
         });
 
         if (error) {
-          syncDiag("create/join RPC error", { message: error.message, details: error.details, hint: error.hint, code: error.code });
+          syncDiag("transport: create/join RPC error", { message: error.message, details: error.details, hint: error.hint, code: error.code });
           console.error("Create/join team RPC error:", JSON.stringify(error));
           showStatus(error.message || "Team sync error.");
           return;
         }
 
         if (!data?.ok) {
-          syncDiag("create/join rejected", { ...data, attemptedTeam: name, previousTeam: previousTeam?.name || "" });
+          syncDiag("transport: create/join rejected", { ...data, attemptedTeam: name, previousTeam: previousTeam?.name || "" });
           if (previousTeam?.name && sameTeamName(previousTeam.name, name)) {
             clearActiveTeamSession();
             showStatus("Team name/code mismatch.");
@@ -4223,7 +4223,7 @@
           }
           return;
         }
-        syncDiag(data.created ? "team created" : "team joined", { teamName: data.team_name || name });
+        syncDiag(data.created ? "lifecycle: team created" : "lifecycle: team joined", { teamName: data.team_name || name });
 
         activeTeam = {
           name: data.team_name || name,
@@ -4334,14 +4334,14 @@
       for (const name of [...pendingDeletes]) {
         if (transectStore[name]) {
           delete transectStore[name];
-          syncDiag("local tombstone suppressed stale upload", { name });
+          syncDiag("transport: tombstone suppressed stale upload", { name });
         }
       }
 
       const names = Object.keys(transectStore).filter(name => !pendingDeletes.has(name));
       let uploaded = 0;
       let tombstones = 0;
-      syncDiag("push started", { transects: names.length, tombstones: pendingDeletes.size });
+      syncDiag("transport: push started", { transects: names.length, tombstones: pendingDeletes.size });
 
       if (!names.length && !pendingDeletes.size) {
         return { uploaded, tombstones, deletedNames };
@@ -4357,13 +4357,13 @@
         });
 
         if (error) {
-          syncDiag("upload RPC error", { name, message: error.message, details: error.details, hint: error.hint, code: error.code });
+          syncDiag("transport: upload RPC error", { name, message: error.message, details: error.details, hint: error.hint, code: error.code });
           console.error("stp_v2_upsert_transect failed", JSON.stringify({ name, error }));
           throw new Error(error.message || "Upload failed");
         }
 
         uploaded += 1;
-        syncDiag("uploaded transect", { name });
+        syncDiag("transport: uploaded transect", { name });
       }
 
       for (const name of [...pendingDeletes]) {
@@ -4384,20 +4384,20 @@
         tombstones += 1;
       }
 
-      syncDiag("push complete", { uploaded, tombstones, deletedNames });
+      syncDiag("transport: push complete", { uploaded, tombstones, deletedNames });
       return { uploaded, tombstones, deletedNames };
     }
 
     async function pullTeamRows(teamKey) {
-      syncDiag("pull requested");
+      syncDiag("transport: pull requested");
       const { data, error } = await PitProfileBackend.rpc("stp_v2_pull_transects", {
         p_team_key: teamKey
       });
       if (error) {
-        syncDiag("pull RPC error", { message: error.message, details: error.details, hint: error.hint, code: error.code });
+        syncDiag("transport: pull RPC error", { message: error.message, details: error.details, hint: error.hint, code: error.code });
         throw error;
       }
-      syncDiag("pull complete", { rows: (data || []).length });
+      syncDiag("transport: pull complete", { rows: (data || []).length });
       return data || [];
     }
 
@@ -4474,7 +4474,7 @@
             if (localHas) {
               // Self-authored or currently-pushed deletes are authoritative local intent, not teammate conflicts.
               delete localStore[name];
-              syncDiag("ignored self/local delete echo", { name, author: remoteAuthor });
+              syncDiag("state: ignored self-delete echo", { name, author: remoteAuthor });
             }
             continue;
           }
@@ -4643,7 +4643,7 @@
         ]
       });
 
-      syncDiag("transect conflict resolved", { transect: conflict.transectName, choice });
+      syncDiag("resolution: transect", { transect: conflict.transectName, choice });
       if (choice === "abort") return "abort";
 
       if (choice === "theirs") {
@@ -4694,7 +4694,7 @@
       });
 
       if (choice === "abort") {
-        syncDiag("STP conflict aborted", { transect: transectName, stpId: stp.pageId });
+        syncDiag("resolution: STP aborted", { transect: transectName, stpId: stp.pageId });
         return "abort";
       }
 
@@ -4702,15 +4702,19 @@
         // Use Theirs: replace local STP with remote, push remote
         const snap = transectStore[transectName];
         if (snap) snap.pages = snap.pages.map(p => p.id === stp.pageId ? stp.remote : p);
-        syncDiag("STP resolved: use theirs", {
+        syncDiag("resolution: STP use theirs", {
           transect: transectName, stpId: stp.pageId,
-          pushedValue: "remote", extents: stp.remote.extents
+          pushedValue: "remote",
+          extents: stp.remote.extents,
+          artifacts: stp.remote.artifacts
         });
       } else {
         // Keep Mine: local STP pushed as authoritative
-        syncDiag("STP resolved: keep mine", {
+        syncDiag("resolution: STP keep mine", {
           transect: transectName, stpId: stp.pageId,
-          pushedValue: "local", extents: stp.local.extents
+          pushedValue: "local",
+          extents: stp.local.extents,
+          artifacts: stp.local.artifacts
         });
       }
     }
@@ -4800,7 +4804,7 @@
     async function syncTeamConfirmed(options = {}) {
       const { joinLoadOnly = false, teamWasCreated = false } = options || {};
       clearSyncDiag();
-      syncDiag(joinLoadOnly ? "team load started" : "sync started");
+      syncDiag(joinLoadOnly ? "lifecycle: team load started" : "lifecycle: sync started");
 
       if (teamAuthPending && !joinLoadOnly) {
         showStatus("Finish team verification before syncing.");
@@ -4818,11 +4822,11 @@
       // Flush any unsaved working state into the store before diffing or pushing.
       // Without this, edits made since the last explicit save are invisible to the
       // sync engine and get overwritten by the remote version after settlement.
-      syncDiag("pre-flush state", { dirty: dirtyTransect, activeTransectName, storeHasActive: !!transectStore[activeTransectName] });
+      syncDiag("state: pre-flush", { dirty: dirtyTransect, activeTransectName, storeHasActive: !!transectStore[activeTransectName] });
       if (dirtyTransect && activeTransectName) {
         transectStore[activeTransectName] = snapshotTransect();
         dirtyTransect = false;
-        syncDiag("flushed dirty working state", { name: activeTransectName });
+        syncDiag("state: flushed dirty working state", { name: activeTransectName });
       }
 
       try {
@@ -4837,7 +4841,7 @@
           // Log local store state at diff time so we can verify skip correctness
           const activeSnap = transectStore[activeTransectName];
           if (activeSnap && stage !== "join-load") {
-            syncDiag(stage + " local store sample", {
+            syncDiag("state: local store at " + stage, {
               transect: activeTransectName,
               p1LayerA: activeSnap.pages[0]?.layers?.A?.hueNumber,
               p2LayerA: activeSnap.pages[1]?.layers?.A?.hueNumber
@@ -4848,7 +4852,7 @@
             justDeleted: syncSessionDeletedNames,
             resolvedKeepSet: resolvedKeepSet || new Set()
           });
-          syncDiag(`${stage} diff`, {
+          syncDiag(`diff: ${stage}`, {
             rows: rows.length,
             autoMerge: diff.autoMerge.length,
             conflicts: diff.conflicts.length,
@@ -4863,7 +4867,7 @@
           refreshTransectDropdown();
           const pushed = await pushLocalToTeam(teamKey);
           for (const name of pushed.deletedNames || []) syncSessionDeletedNames.add(name);
-          syncDiag(`${stage} push complete`, pushed);
+          syncDiag(`transport: ${stage} push complete`, pushed);
           return pushed;
         }
 
@@ -4910,10 +4914,10 @@
 
         let resolvedKeepSet = new Set();
         if (conflicts.length) {
-          syncDiag("showing conflict queue", { count: conflicts.length });
+          syncDiag("resolution: conflict queue", { count: conflicts.length });
           const queueResult = await runConflictQueue(conflicts, async () => {});
           if (queueResult === "abort") {
-            syncDiag("sync aborted by user");
+            syncDiag("lifecycle: sync aborted by user");
             if (window.__ppDiag) window.__ppDiag.syncFail("aborted by user");
             showStatus("Sync cancelled.");
             render();
@@ -4932,7 +4936,7 @@
         }
 
         if (verify.conflicts.length) {
-          syncDiag("conflicts remain after resolution", { conflicts: verify.conflicts.length });
+          syncDiag("resolution: conflicts remain after verify", { count: verify.conflicts.length });
           saveLocalWorkingState();
           refreshTransectDropdown();
           render();
@@ -4999,7 +5003,7 @@
       pageIndex = resetToFirstPage ? 0 : clamp(Number(snapshot.pageIndex) || 0, 0, pages.length - 1);
       renderDepth = Math.max(1, Number(snapshot.renderDepth) || DEFAULT_RENDER_DEPTH_CM);
       activeTransectName = contextLabel;
-      if (dirtyTransect) syncDiag("dirty cleared: applyTransectSnapshot");
+      if (dirtyTransect) syncDiag("state: dirty cleared by applyTransectSnapshot");
       dirtyTransect = false;
       revealArtifactLabels();
       pendingAction = null;
@@ -5016,7 +5020,7 @@
         pageIndex = clamp(Number(snapshot.pageIndex) || 0, 0, pages.length - 1);
         renderDepth = Math.max(1, Number(snapshot.renderDepth) || DEFAULT_RENDER_DEPTH_CM);
         activeTransectName = contextLabel;
-        if (dirtyTransect) syncDiag("dirty cleared: alignWorkingStateToSyncedStore branch 1");
+        if (dirtyTransect) syncDiag("state: dirty cleared by alignWorkingState (active transect)");
         dirtyTransect = false;
         return;
       }
@@ -5031,7 +5035,7 @@
         pageIndex = clamp(Number(snapshot.pageIndex) || 0, 0, pages.length - 1);
         renderDepth = Math.max(1, Number(snapshot.renderDepth) || DEFAULT_RENDER_DEPTH_CM);
         activeTransectName = contextLabel;
-        if (dirtyTransect) syncDiag("dirty cleared: alignWorkingStateToSyncedStore branch 2");
+        if (dirtyTransect) syncDiag("state: dirty cleared by alignWorkingState (first transect)");
         dirtyTransect = false;
         return;
       }
