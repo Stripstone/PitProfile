@@ -4348,10 +4348,13 @@
       }
 
       for (const name of names) {
-        const sourceSnapshot = pushOverrides[name]
+        const hasOverride = Boolean(pushOverrides[name]);
+        const sourceSnapshot = hasOverride
           ? { ...transectStore[name], pages: pushOverrides[name] }
           : transectStore[name];
+        if (hasOverride) syncDiag("push: using override pages for transect", { name, overridePageCount: pushOverrides[name].length });
         const payload = transectPayload(name, sourceSnapshot);
+        syncDiag("push: payload page A extents", { name, pages: payload.pages.map(p => ({ id: p.id, extA: p.extents?.A, layerA: p.layers?.A?.hueNumber })) });
         const { error } = await PitProfileBackend.rpc("stp_v2_upsert_transect", {
           p_team_key: teamKey,
           p_author_name: activeTeam.member,
@@ -4875,6 +4878,15 @@
 
         async function pullAndDiff(stage, resolvedKeepSet) {
           const rows = await pullTeamRows(teamKey);
+          // Log local store state at diff time so we can verify skip correctness
+          const activeSnap = transectStore[activeTransectName];
+          if (activeSnap && stage !== "join-load") {
+            syncDiag(stage + " local store sample", {
+              transect: activeTransectName,
+              p1LayerA: activeSnap.pages[0]?.layers?.A?.hueNumber,
+              p2LayerA: activeSnap.pages[1]?.layers?.A?.hueNumber
+            });
+          }
           const diff = computeSyncDiff(transectStore, deletedTransectSet(), rows, {
             selfMember: activeTeam.member,
             justDeleted: syncSessionDeletedNames,
