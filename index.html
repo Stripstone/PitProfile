@@ -2638,7 +2638,7 @@
           <span id="teamNameDisplay"></span>
           <button id="leaveTeam" type="button" aria-label="Leave team">×</button>
         </div>
-        <button class="transect-action" id="syncTeam" type="button">Sync</button>
+        <button class="transect-action" id="syncTeam" type="button">Join Team</button>
       </div>
 
       <!-- Add Transect modal -->
@@ -4095,14 +4095,17 @@
     function updateTeamDisplay() {
       const pill = $("teamPill");
       const label = $("teamNameDisplay");
+      const syncBtn = $("syncTeam");
       if (!pill || !label) return;
 
       if (activeTeam?.name) {
         label.textContent = activeTeam.name;
         pill.hidden = false;
+        if (syncBtn && !teamAuthPending) syncBtn.textContent = "Sync";
       } else {
         label.textContent = "";
         pill.hidden = true;
+        if (syncBtn && !teamAuthPending) syncBtn.textContent = "Join Team";
       }
     }
 
@@ -4179,8 +4182,8 @@
     async function joinTeamFromPanel() {
       if (teamAuthPending) return;
 
-      const name = String($("teamNameInput").value || "").trim();
-      const code = String($("teamCodeInput").value || "").trim();
+      const name = String($("teamNameInput").value || "").trim().toLowerCase();
+      const code = String($("teamCodeInput").value || "").trim().toLowerCase();
       const member = String($("memberNameInput").value || "").trim();
       const previousTeam = activeTeam ? { ...activeTeam } : null;
 
@@ -4457,6 +4460,9 @@
       const conflicts = [];
       const selfName = String(options.selfMember || activeTeam?.member || "").trim();
       const justDeleted = options.justDeleted instanceof Set ? options.justDeleted : new Set(options.justDeleted || []);
+      // resolvedKeepSet: transect names where user already chose "Keep mine" on a
+      // remote-delete. Skip re-surfacing as conflict on verify pass.
+      const resolvedKeepSet = options.resolvedKeepSet instanceof Set ? options.resolvedKeepSet : new Set();
 
       for (const row of collapseRemoteRowsByTransect(remoteRows)) {
         const name          = row.transect_name;
@@ -4476,11 +4482,12 @@
             continue;
           }
 
-          if (localHas) {
+          if (localHas && !resolvedKeepSet.has(name)) {
             // A different teammate deleted something we still have.
+            // Skip if user already chose "Keep mine" on this transect this session.
             conflicts.push({ type: "remote-delete", transectName: name, authorName: remoteAuthor || "teammate" });
           }
-          // Already gone locally — no-op
+          // Already gone locally or user kept it this session — no-op
           continue;
         }
 
@@ -4654,6 +4661,11 @@
           await resolveStpConflict(conflict.transectName, stp, j, conflict.stpConflicts.length);
         }
 
+        // Canonicalise all pages after merge so that skipped STPs
+        // have normalised field shape. Combined with canonicalizePage,
+        // this ensures the verify pass sees pushed == pulled for skipped STPs.
+        snap.pages = snap.pages.map(ensurePageShape);
+
       } else if (choice === "keep") {
         // Local stays untouched
       }
@@ -4735,14 +4747,20 @@
           dirtyTransect = false;
           pendingSelectionName = "";
         }
+        return false;
       }
+      return true;
     }
 
     async function runConflictQueue(conflicts, onComplete) {
+      // resolvedKeepSet: transect names where user chose "Keep mine" on a
+      // remote-delete conflict. The verify pass must not re-surface these.
+      const resolvedKeepSet = new Set();
       for (let i = 0; i < conflicts.length; i++) {
         const c = conflicts[i];
         if (c.type === "remote-delete") {
-          await resolveRemoteDeleteConflict(c, i, conflicts.length);
+          const kept = await resolveRemoteDeleteConflict(c, i, conflicts.length);
+          if (kept) resolvedKeepSet.add(c.transectName);
         } else if (c.type === "transect-conflict") {
           await resolveTransectConflict(c, i, conflicts.length);
         }
@@ -4751,6 +4769,7 @@
       if (typeof onComplete === "function") {
         return await onComplete();
       }
+      return resolvedKeepSet;
     }
 
     // ── Main sync entry point ────────────────────────────────────────
@@ -4789,11 +4808,12 @@
 
         const syncSessionDeletedNames = new Set();
 
-        async function pullAndDiff(stage) {
+        async function pullAndDiff(stage, resolvedKeepSet) {
           const rows = await pullTeamRows(teamKey);
           const diff = computeSyncDiff(transectStore, deletedTransectSet(), rows, {
             selfMember: activeTeam.member,
-            justDeleted: syncSessionDeletedNames
+            justDeleted: syncSessionDeletedNames,
+            resolvedKeepSet: resolvedKeepSet || new Set()
           });
           syncDiag(`${stage} diff`, {
             rows: rows.length,
@@ -4855,15 +4875,16 @@
           applySyncAutoMerges(autoMerge);
         }
 
+        let resolvedKeepSet = new Set();
         if (conflicts.length) {
           syncDiag("showing conflict queue", { count: conflicts.length });
-          await runConflictQueue(conflicts, async () => {});
+          resolvedKeepSet = await runConflictQueue(conflicts, async () => {}) || new Set();
           await pushResolvedState("conflict-resolution");
         } else {
           await pushResolvedState(autoMerge.length ? "auto-merge" : "initial");
         }
 
-        const verify = await pullAndDiff("verify");
+        const verify = await pullAndDiff("verify", resolvedKeepSet);
         if (verify.autoMerge.length) {
           applySyncAutoMerges(verify.autoMerge);
           await pushResolvedState("verify-auto-merge");
