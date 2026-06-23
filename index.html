@@ -490,6 +490,413 @@
   }
 
   /* ============================================================
+     01b. GUIDE PAGE
+     ============================================================ */
+  .guide-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9000;
+    background: #efe8db;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .guide-overlay[hidden] { display: none; }
+
+  /* Topo background — reuse landing page treatment */
+  .guide-overlay::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(circle at 21% 20%, rgba(255,255,255,0.18), transparent 34%),
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.72' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='.22'/%3E%3C/svg%3E"),
+      #efe8db;
+    background-size: auto, 180px 180px, auto;
+    background-blend-mode: normal, multiply, normal;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .guide-card {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    max-width: 700px;
+    width: 100%;
+    margin: 0 auto;
+  }
+
+  /* Close button */
+  .guide-close {
+    position: absolute;
+    top: 14px;
+    right: 16px;
+    background: rgba(255,255,255,0.75);
+    border: none;
+    border-radius: 50%;
+    width: 34px;
+    height: 34px;
+    font-size: 14px;
+    cursor: pointer;
+    color: #57534e;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: inherit;
+    transition: background 0.15s;
+  }
+  .guide-close:hover { background: #fff; color: #1c1917; }
+
+  /* Dots */
+  .guide-dots {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    padding: 20px 0 16px;
+    flex-shrink: 0;
+  }
+  .guide-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #d6d3d1;
+    transition: background 0.2s, transform 0.2s;
+    cursor: pointer;
+    border: none;
+  }
+  .guide-dot.active { background: #57534e; transform: scale(1.3); }
+
+  /* Slides area — scrollable, takes all available height */
+  .guide-slides {
+    flex: 1;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Each slide is a vertical stack: visual on top, text below */
+  .guide-slide {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    padding: 28px 32px 20px;
+    min-height: 100%;
+    animation: guideFadeIn 0.25s ease;
+  }
+  .guide-slide.active { display: flex; }
+  .guide-slide[data-slide="3"] { padding-top: 52px; }
+  .guide-slide[data-slide="3"] .guide-text { margin-top: 36px; }
+
+  @keyframes guideFadeIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Visual — generous fixed height, centred */
+  .guide-visual {
+    width: 100%;
+    max-width: 340px;
+    height: 240px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 28px;
+    flex-shrink: 0;
+  }
+
+  /* Text — full width, no overflow tricks needed */
+  .guide-text {
+    width: 100%;
+    max-width: 520px;
+    padding: 0 4px;
+  }
+  .guide-text h2 {
+    font-size: 1.3rem;
+    font-weight: 900;
+    color: #1c1917;
+    margin: 0 0 12px;
+    letter-spacing: -0.01em;
+    text-align: center;
+  }
+  .guide-text p { font-size: 0.92rem; color: #44403c; margin: 0 0 10px; line-height: 1.6; }
+  .guide-text ul, .guide-text ol { font-size: 0.92rem; color: #44403c; margin: 0 0 10px; padding-left: 20px; line-height: 1.7; }
+  .guide-text strong { color: #1c1917; }
+
+  /* ── Slide 1: pit visual ── */
+  .gv-pit-wrap {
+    display: flex;
+    height: 190px;
+    width: 100%;
+    max-width: 160px;
+    position: relative;
+  }
+  .gv-pit {
+    flex: 1;
+    border-radius: 6px 6px 4px 4px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    border: 2px solid #a8a29e;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+  }
+  .gv-layer { width: 100%; }
+  .gv-labels {
+    position: absolute;
+    left: 8px;
+    top: 0;
+    bottom: 0;
+    pointer-events: none;
+  }
+  .gv-label {
+    position: absolute;
+    font-size: 13px;
+    font-weight: 800;
+    color: rgba(255,255,255,0.9);
+    text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+    transform: translateY(-50%);
+  }
+  .gv-ruler {
+    position: absolute;
+    right: -32px;
+    top: 0;
+    bottom: 0;
+    width: 30px;
+    font-size: 9px;
+    color: #78716c;
+    font-weight: 600;
+  }
+  .gv-tick {
+    position: absolute;
+    right: 0;
+    transform: translateY(-50%);
+    display: flex;
+    align-items: center;
+    gap: 3px;
+  }
+  .gv-tick::before {
+    content: '';
+    display: block;
+    width: 5px;
+    height: 1px;
+    background: #a8a29e;
+  }
+
+  /* ── Slide 2: Munsell demo ── */
+  .gv-munsell-demo {
+    background: rgba(255,255,255,0.75);
+    border-radius: 16px;
+    padding: 18px 20px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    width: 100%;
+    max-width: 340px;
+    box-shadow: 0 1px 8px rgba(0,0,0,0.08);
+  }
+  .gvm-swatch {
+    width: 80px;
+    height: 80px;
+    border-radius: 14px;
+    border: 2px solid rgba(0,0,0,0.1);
+    transition: background-color 0.4s ease;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    flex-shrink: 0;
+  }
+  .gvm-right { display: flex; flex-direction: column; gap: 8px; flex: 1; }
+  .gvm-code {
+    font-size: 14px;
+    font-weight: 800;
+    color: #1c1917;
+    letter-spacing: 0.04em;
+    font-family: monospace;
+  }
+  .gvm-controls { display: flex; flex-direction: column; gap: 6px; }
+  .gvm-row { display: flex; align-items: center; gap: 8px; }
+  .gvm-lbl { font-size: 11px; font-weight: 700; color: #78716c; width: 48px; flex-shrink: 0; }
+  .gvm-stepper {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(255,255,255,0.9);
+    border-radius: 8px;
+    padding: 4px 8px;
+  }
+  .gvm-stepper button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 15px;
+    font-weight: 900;
+    color: #57534e;
+    padding: 0 2px;
+    line-height: 1;
+    font-family: inherit;
+  }
+  .gvm-stepper button:hover { color: #1c1917; }
+  .gvm-stepper span { font-size: 12px; font-weight: 700; min-width: 44px; text-align: center; color: #1c1917; }
+
+  /* ── Slide 3: grid visual ── */
+  .gv-grid-wrap {
+    width: 100%;
+    max-width: 320px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .gv-grid-row { display: flex; flex-direction: column; gap: 5px; }
+  .gv-grid-label { font-size: 10px; font-weight: 800; color: #78716c; letter-spacing: 0.06em; text-transform: uppercase; }
+  .gv-grid-stps { display: flex; gap: 6px; flex-wrap: wrap; }
+  .gv-stp {
+    font-size: 11px;
+    font-weight: 700;
+    padding: 6px 10px;
+    border-radius: 8px;
+    background: rgba(255,255,255,0.5);
+    border: 1.5px solid #d6d3d1;
+    color: #a8a29e;
+  }
+  .gv-stp.gv-stp-active {
+    background: rgba(255,255,255,0.92);
+    border-color: #78716c;
+    color: #1c1917;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+  }
+
+  /* ── Slide 4: workflow ── */
+  .gv-workflow { display: flex; flex-direction: column; align-items: center; width: 100%; max-width: 300px; gap: 0; }
+  .gv-wf-step {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: rgba(255,255,255,0.5);
+    border: 1.5px solid #d6d3d1;
+    border-radius: 10px;
+    padding: 12px 16px;
+    width: 100%;
+    transition: all 0.3s;
+    opacity: 0.5;
+  }
+  .gv-wf-step.gv-wf-active {
+    background: rgba(255,255,255,0.92);
+    border-color: #78716c;
+    opacity: 1;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.09);
+  }
+  .gv-wf-num {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: #57534e;
+    color: #fff;
+    font-size: 12px;
+    font-weight: 900;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .gv-wf-step:not(.gv-wf-active) .gv-wf-num { background: #d6d3d1; }
+  .gv-wf-txt { font-size: 13px; font-weight: 700; color: #1c1917; }
+  .gv-wf-arrow { font-size: 14px; color: #a8a29e; margin: 5px 0; }
+
+  /* ── Slide 5: artifact demo ── */
+  .gv-artifact-demo {
+    background: rgba(255,255,255,0.75);
+    border-radius: 16px;
+    padding: 18px 20px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    width: 100%;
+    max-width: 340px;
+    box-shadow: 0 1px 8px rgba(0,0,0,0.08);
+  }
+  .gv-artifact-pit {
+    display: flex;
+    flex-direction: column;
+    width: 72px;
+    height: 100px;
+    border-radius: 5px;
+    overflow: visible;
+    border: 2px solid #a8a29e;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    position: relative;
+    flex-shrink: 0;
+  }
+  .gv-artifact-layer {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+  }
+  .gv-artifact-icon { font-size: 18px; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.4)); }
+  .gv-artifact-label {
+    position: absolute;
+    left: 78px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 11px;
+    font-weight: 700;
+    color: #1c1917;
+    background: rgba(255,255,255,0.95);
+    border-radius: 6px;
+    padding: 3px 8px;
+    white-space: nowrap;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+  }
+  .gv-artifact-controls { flex: 1; }
+  .gv-artifact-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+
+  /* ── Nav bar — sticky to bottom ── */
+  .guide-nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 32px 22px;
+    gap: 10px;
+    border-top: 1px solid rgba(0,0,0,0.08);
+    background: rgba(239,232,219,0.9);
+    backdrop-filter: blur(6px);
+    flex-shrink: 0;
+  }
+  .guide-nav-btn {
+    background: rgba(255,255,255,0.8);
+    border: 1.5px solid #d6d3d1;
+    border-radius: 10px;
+    width: 44px;
+    height: 44px;
+    font-size: 20px;
+    cursor: pointer;
+    color: #57534e;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: inherit;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .guide-nav-btn:hover { background: #fff; border-color: #78716c; color: #1c1917; }
+  .guide-nav-btn:disabled { opacity: 0.25; cursor: default; }
+  .guide-cta {
+    background: #1c1917;
+    color: #efe8db;
+    border: none;
+    border-radius: 12px;
+    padding: 12px 26px;
+    font-size: 15px;
+    font-weight: 800;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background 0.15s;
+    letter-spacing: -0.01em;
+  }
+  .guide-cta:hover { background: #3d2b1f; }
+  .guide-cta[hidden] { display: none; }
+
+  /* ============================================================
      02. APP SHELL ARCHITECTURE
      ============================================================ */
   #app-shell { 
@@ -1603,7 +2010,7 @@
 
   .pit {
     position: relative;
-    height: 240px;
+    height: 360px;
     overflow: hidden;
   }
 
@@ -2173,7 +2580,7 @@
       border-radius: 26px;
     }
     .pit {
-      height: 360px;
+      height: 480px;
     }
     .layer-label {
       font-size: 40px;
@@ -2262,7 +2669,7 @@
       max-width: 820px;
     }
     .pit {
-      height: 420px;
+      height: 540px;
     }
     .row-grid {
       grid-template-columns: 2.7rem 3.3rem 3.8rem 3.2rem 3.2rem 0.5rem 3.2rem minmax(4rem, 1fr) max-content max-content;
@@ -2498,8 +2905,8 @@
       <footer class="ob-footer">
         <div class="ob-footer-top">
           Don't have a project yet?
-          <a href="#" onclick="obLaunchApp(event)">Try a demo</a> &nbsp;/&nbsp;
-          <a href="#" onclick="obLaunchApp(event)">Learn more</a>
+          <a href="#" onclick="openGuideModal(event)">How it works</a> &nbsp;/&nbsp;
+          <a href="#" onclick="obLaunchApp(event)">Try a demo</a>
         </div>
         <div class="ob-footer-bottom">
           <span>PitProfile Visualizer v1.1 © 2026 SummitsVault, LLC.</span>
@@ -2528,6 +2935,212 @@
     </div>
 
   </div><!-- /onboarding-overlay -->
+
+  <!-- ============================================================
+       GUIDE MODAL
+       ============================================================ -->
+  <div id="guide-modal" class="guide-overlay" role="dialog" aria-modal="true" aria-labelledby="guide-modal-title" hidden>
+    <div class="guide-card">
+      <button class="guide-close" onclick="closeGuideModal()" aria-label="Close guide">✕</button>
+
+      <!-- Step dots -->
+      <div class="guide-dots" id="guideDots"></div>
+
+      <!-- Slides -->
+      <div class="guide-slides" id="guideSlides">
+
+        <!-- Slide 1: What is a pit profile? -->
+        <div class="guide-slide active" data-slide="0">
+          <div class="guide-visual guide-visual-intro">
+            <div class="gv-pit-wrap">
+              <div class="gv-pit">
+                <div class="gv-layer" style="height:22%;background:#3d2b1f;"></div>
+                <div class="gv-layer" style="height:34%;background:#6b4226;"></div>
+                <div class="gv-layer" style="height:44%;background:#9b6a3a;"></div>
+              </div>
+              <div class="gv-labels">
+                <div class="gv-label" style="top:11%;">A</div>
+                <div class="gv-label" style="top:39%;">B</div>
+                <div class="gv-label" style="top:72%;">C</div>
+              </div>
+              <div class="gv-ruler">
+                <div class="gv-tick" style="top:0%;">0</div>
+                <div class="gv-tick" style="top:33%;">17</div>
+                <div class="gv-tick" style="top:66%;">37</div>
+                <div class="gv-tick" style="top:99%;">50</div>
+              </div>
+            </div>
+          </div>
+          <div class="guide-text">
+            <h2 id="guide-modal-title">What is a pit profile?</h2>
+            <p>A <strong>soil pit profile</strong> is a vertical cross-section of the ground, divided into <strong>horizons</strong> — layers that differ in color, texture, and composition. Field scientists dig pits and record each horizon to understand soil history, archaeology, and land use.</p>
+            <p>PitProfile turns your field notes into a clean visual column — instantly.</p>
+          </div>
+        </div>
+
+        <!-- Slide 2: Munsell color -->
+        <div class="guide-slide" data-slide="1">
+          <div class="guide-visual guide-visual-munsell">
+            <div class="gv-munsell-demo" id="gvMunsellDemo">
+              <div class="gvm-swatch" id="gvmSwatch"></div>
+              <div class="gvm-right">
+                <div class="gvm-code" id="gvmCode"></div>
+                <div class="gvm-controls">
+                  <div class="gvm-row">
+                    <span class="gvm-lbl">Hue</span>
+                    <div class="gvm-stepper">
+                      <button onclick="gvmStep('hue',-1)">−</button>
+                      <span id="gvmHue"></span>
+                      <button onclick="gvmStep('hue',1)">+</button>
+                    </div>
+                  </div>
+                  <div class="gvm-row">
+                    <span class="gvm-lbl">Value</span>
+                    <div class="gvm-stepper">
+                      <button onclick="gvmStep('val',-1)">−</button>
+                      <span id="gvmVal"></span>
+                      <button onclick="gvmStep('val',1)">+</button>
+                    </div>
+                  </div>
+                  <div class="gvm-row">
+                    <span class="gvm-lbl">Chroma</span>
+                    <div class="gvm-stepper">
+                      <button onclick="gvmStep('chr',-1)">−</button>
+                      <span id="gvmChr"></span>
+                      <button onclick="gvmStep('chr',1)">+</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="guide-text">
+            <h2>Munsell soil color</h2>
+            <p>Each horizon has a <strong>Munsell color code</strong> — a scientific standard used by soil scientists worldwide. It has three parts:</p>
+            <ul>
+              <li><strong>Hue</strong> — the color family (e.g. 10YR = yellow-red)</li>
+              <li><strong>Value</strong> — lightness, 2 (very dark) → 8 (very light)</li>
+              <li><strong>Chroma</strong> — saturation, 1 (dull) → 8 (vivid)</li>
+            </ul>
+            <p>Try the steppers above to see how color changes live.</p>
+          </div>
+        </div>
+
+        <!-- Slide 3: Series and Profiles -->
+        <div class="guide-slide" data-slide="2">
+          <div class="guide-visual guide-visual-grid">
+            <div class="gv-grid-wrap">
+              <div class="gv-grid-row">
+                <div class="gv-grid-label">Series S-01</div>
+                <div class="gv-grid-stps">
+                  <div class="gv-stp gv-stp-active">P 1</div>
+                  <div class="gv-stp gv-stp-active">P 2</div>
+                  <div class="gv-stp gv-stp-active">P 3</div>
+                  <div class="gv-stp">P 4</div>
+                </div>
+              </div>
+              <div class="gv-grid-row">
+                <div class="gv-grid-label">Series S-02</div>
+                <div class="gv-grid-stps">
+                  <div class="gv-stp gv-stp-active">P 1</div>
+                  <div class="gv-stp gv-stp-active">P 2</div>
+                  <div class="gv-stp">P 3</div>
+                  <div class="gv-stp">P 4</div>
+                </div>
+              </div>
+              <div class="gv-grid-row">
+                <div class="gv-grid-label">Series S-03</div>
+                <div class="gv-grid-stps">
+                  <div class="gv-stp gv-stp-active">P 1</div>
+                  <div class="gv-stp">P 2</div>
+                  <div class="gv-stp">P 3</div>
+                  <div class="gv-stp">P 4</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="guide-text">
+            <h2>Series &amp; Profiles</h2>
+            <p>A <strong>series</strong> is any named grouping of profiles — a survey transect, an excavation unit, a trench, or any sequence that makes sense for your project.</p>
+            <p>Each series contains as many <strong>profiles</strong> as you need. Switch between series instantly with the selector in the toolbar.</p>
+          </div>
+        </div>
+
+        <!-- Slide 4: Workflow -->
+        <div class="guide-slide" data-slide="3">
+          <div class="guide-visual guide-visual-steps">
+            <div class="gv-workflow">
+              <div class="gv-wf-step gv-wf-active" id="gvWf0">
+                <div class="gv-wf-num">1</div>
+                <div class="gv-wf-txt">Name your series</div>
+              </div>
+              <div class="gv-wf-arrow">↓</div>
+              <div class="gv-wf-step" id="gvWf1">
+                <div class="gv-wf-num">2</div>
+                <div class="gv-wf-txt">Set horizon &amp; Munsell color</div>
+              </div>
+              <div class="gv-wf-arrow">↓</div>
+              <div class="gv-wf-step" id="gvWf2">
+                <div class="gv-wf-num">3</div>
+                <div class="gv-wf-txt">Enter depth (cm)</div>
+              </div>
+              <div class="gv-wf-arrow">↓</div>
+              <div class="gv-wf-step" id="gvWf3">
+                <div class="gv-wf-num">4</div>
+                <div class="gv-wf-txt">Add artifact finds</div>
+              </div>
+            </div>
+          </div>
+          <div class="guide-text">
+            <h2>Your workflow</h2>
+            <p>Recording a pit takes under a minute:</p>
+            <ol>
+              <li>Select or create a <strong>series</strong>, then navigate to a profile</li>
+              <li>Tap the horizon letter (A/B/C/E) and dial in the <strong>Munsell color</strong></li>
+              <li>Type the <strong>depth in cm</strong> — the profile renders live</li>
+              <li>Tap <strong>↺</strong> to log artifact finds — see the next slide</li>
+            </ol>
+            <p>Data saves automatically to your browser. Connect a team code to sync across devices.</p>
+          </div>
+        </div>
+
+        <!-- Slide 5: Artifacts & Labels -->
+        <div class="guide-slide" data-slide="4">
+          <div class="guide-visual guide-visual-artifact">
+            <div class="gv-artifact-demo">
+              <div class="gv-artifact-pit">
+                <div class="gv-artifact-layer" style="height:28%;background:#3d2b1f;">
+                  <span class="gv-artifact-icon" id="gvArtIcon">🏺</span>
+                  <span class="gv-artifact-label" id="gvArtLabel">Ceramic</span>
+                </div>
+                <div class="gv-artifact-layer" style="height:38%;background:#6b4226;"></div>
+                <div class="gv-artifact-layer" style="height:34%;background:#9b6a3a;"></div>
+              </div>
+              <div class="gv-artifact-controls">
+                <div class="gv-artifact-row">
+                  <span style="font-size:10px;color:#78716c;text-align:center;width:100%;line-height:1.6;">↺ cycles type · dbl-tap clears<br>tap icon → toggle labels<br>tap label → edit note</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="guide-text">
+            <h2>Artifacts &amp; labels</h2>
+            <p>Each horizon can carry an <strong>artifact find</strong>. Tap <strong>↺</strong> on any row to cycle through types: Lithic, Ceramic, Bone, Shell, Metal, and more. Double-tap ↺ to clear it.</p>
+            <p>The artifact appears as an <strong>icon on the profile</strong> at the correct depth. Tap the icon to toggle labels on and off.</p>
+            <p>Tap a <strong>label</strong> to type a note — a quick description, find number, or any field annotation. Press Enter or click away to save.</p>
+          </div>
+        </div>
+
+      </div><!-- /guide-slides -->
+
+      <!-- Nav -->
+      <div class="guide-nav">
+        <button class="guide-nav-btn guide-prev" id="guidePrev" onclick="guideNav(-1)" aria-label="Previous">←</button>
+        <button class="guide-nav-btn guide-next" id="guideNext" onclick="guideNav(1)" aria-label="Next">→</button>
+        <button class="guide-cta" id="guideCta" onclick="obLaunchApp(null); closeGuideModal();" hidden>Try a demo →</button>
+      </div>
+    </div>
+  </div>
 
   <!-- Policy modal — shell-owned presentation. Content source remains legal/*.html. -->
   <div id="policy-modal" class="policy-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="policy-modal-title" hidden>
@@ -2619,15 +3232,15 @@
     <div class="wrap">
       <header class="topbar">
         <div class="topbar-control-group topbar-control-group-left">
-          <div class="topbar-control-label">Transect</div>
+          <div class="topbar-control-label">Series</div>
           <div class="title compact-title">
             <button class="combo-trigger" id="transectCombo" type="button" aria-haspopup="listbox" aria-expanded="false">
-              <span id="contextInput" class="combo-label">T-01</span>
+              <span id="contextInput" class="combo-label">S-01</span>
               <span class="combo-caret" aria-hidden="true">▾</span>
             </button>
             <!-- Dropdown anchored inside .compact-title for position:absolute -->
             <div class="transect-dropdown" id="transectDropdown" hidden>
-              <div class="transect-dropdown-scroll" id="transectDropdownScroll" role="listbox" aria-label="Saved transects">
+              <div class="transect-dropdown-scroll" id="transectDropdownScroll" role="listbox" aria-label="Saved series">
                 <!-- rows injected by refreshTransectDropdown() -->
               </div>
               <div class="transect-dropdown-footer">
@@ -2638,7 +3251,7 @@
           </div>
         </div>
         <div class="topbar-control-group topbar-control-group-middle">
-          <div class="topbar-control-label">Edit STPs</div>
+          <div class="topbar-control-label">Edit Profiles</div>
           <div class="controls">
             <button class="topbtn" id="removePage">−</button>
             <button class="topbtn" id="addPage">+</button>
@@ -2647,7 +3260,7 @@
           </div>
         </div>
         <div class="topbar-control-group topbar-control-group-right">
-          <div class="topbar-control-label">Goto STP #</div>
+          <div class="topbar-control-label">Goto Profile #</div>
           <div class="controls">
             <button class="topbtn" id="prevPage">←</button>
             <span class="stp-goto-control">
@@ -2657,7 +3270,7 @@
                 value="1"
                 inputmode="numeric"
                 pattern="[0-9]*"
-                aria-label="Go to STP number"
+                aria-label="Go to Profile number"
                 autocomplete="off"
               />
             </span>
@@ -2678,9 +3291,9 @@
       <!-- Add Transect modal -->
       <div class="add-transect-modal" id="addTransectModal" hidden aria-modal="true" role="dialog" aria-labelledby="addTransectModalTitle">
         <div class="add-transect-card">
-          <div class="add-transect-title" id="addTransectModalTitle">Add Transect</div>
+          <div class="add-transect-title" id="addTransectModalTitle">Add Series</div>
           <div class="add-transect-field">
-            <span class="add-transect-prefix">T-</span>
+            <span class="add-transect-prefix">S-</span>
             <input
               id="addTransectSuffix"
               class="add-transect-input"
@@ -2701,9 +3314,9 @@
       <!-- Change STP modal -->
       <div class="add-transect-modal" id="changeStpModal" hidden aria-modal="true" role="dialog" aria-labelledby="changeStpModalTitle">
         <div class="add-transect-card">
-          <div class="add-transect-title" id="changeStpModalTitle">Change STP</div>
+          <div class="add-transect-title" id="changeStpModalTitle">Change Profile</div>
           <div class="add-transect-field">
-            <span class="add-transect-prefix">STP # </span>
+            <span class="add-transect-prefix">Profile # </span>
             <input
               id="changeStpNumberInput"
               class="add-transect-input"
@@ -2864,7 +3477,7 @@
     let renderDepth = DEFAULT_RENDER_DEPTH_CM;
     let pendingAction = null;
     let railDrag = null;
-    let contextLabel = "T-01";
+    let contextLabel = "S-01";
     let transectStore = {};
     let activeTransectName = "";
     let dirtyTransect = false;
@@ -3205,7 +3818,7 @@
       return simTeamKey(name, code);
     }
 
-    function currentSnapshotPayloadForSim(name = activeTransectName || contextLabel || "T-01") {
+    function currentSnapshotPayloadForSim(name = activeTransectName || contextLabel || "S-01") {
       return transectPayload(normalizeSimName(name), {
         name: normalizeSimName(name),
         pageIndex,
@@ -3273,7 +3886,7 @@
         writeSimDb(db);
         return simRowForPull(row);
       },
-      editAsMember({ teamName = activeTeam?.name || "Sim Team", teamCode = activeTeam?.code || "SIM", member = "Maya", transectName = activeTransectName || contextLabel || "T-01", patch = {} } = {}) {
+      editAsMember({ teamName = activeTeam?.name || "Sim Team", teamCode = activeTeam?.code || "SIM", member = "Maya", transectName = activeTransectName || contextLabel || "S-01", patch = {} } = {}) {
         const db = readSimDb();
         const team = ensureSimTeam(db, teamName, teamCode);
         const existing = team.transects[normalizeSimName(transectName)];
@@ -3282,17 +3895,17 @@
         writeSimDb(db);
         return simRowForPull(row);
       },
-      deleteAsMember({ teamName = activeTeam?.name || "Sim Team", teamCode = activeTeam?.code || "SIM", member = "Maya", transectName = activeTransectName || contextLabel || "T-01" } = {}) {
+      deleteAsMember({ teamName = activeTeam?.name || "Sim Team", teamCode = activeTeam?.code || "SIM", member = "Maya", transectName = activeTransectName || contextLabel || "S-01" } = {}) {
         const db = readSimDb();
         const team = ensureSimTeam(db, teamName, teamCode);
         const row = deleteSimTransect(team, member, transectName);
         writeSimDb(db);
         return simRowForPull(row);
       },
-      fabricateConflict({ teamName = activeTeam?.name || "Sim Team", teamCode = activeTeam?.code || "SIM", member = "Maya", transectName = activeTransectName || contextLabel || "T-01", remotePatch = {} } = {}) {
+      fabricateConflict({ teamName = activeTeam?.name || "Sim Team", teamCode = activeTeam?.code || "SIM", member = "Maya", transectName = activeTransectName || contextLabel || "S-01", remotePatch = {} } = {}) {
         return this.editAsMember({ teamName, teamCode, member, transectName, patch: remotePatch });
       },
-      fabricateDuplicateRows({ teamName = activeTeam?.name || "Sim Team", teamCode = activeTeam?.code || "SIM", member = "Maya", transectName = activeTransectName || contextLabel || "T-01", payload = null } = {}) {
+      fabricateDuplicateRows({ teamName = activeTeam?.name || "Sim Team", teamCode = activeTeam?.code || "SIM", member = "Maya", transectName = activeTransectName || contextLabel || "S-01", payload = null } = {}) {
         const db = readSimDb();
         const team = ensureSimTeam(db, teamName, teamCode);
         const row = upsertSimTransect(team, member, transectName, payload || currentSnapshotPayloadForSim(transectName));
@@ -3761,7 +4374,7 @@
       const nextPage = pages[insertAt];
 
       if (!renumberTail && nextPage && nextPage.id === newId) {
-        setPending("add", `Add STP ${newId} here and renumber later pages?`);
+        setPending("add", `Add Profile ${newId} here and renumber later pages?`);
         return;
       }
 
@@ -4093,7 +4706,13 @@
       if (!pit) return;
       const layerCount = activeLayerOrder(current).length;
       const expansionSteps = Math.max(0, Math.ceil((layerCount - 3) / 3));
-      const height = Math.round(240 * (1 + expansionSteps * 0.3));
+      // Base is 360px (1.5× the old 240px minimum).
+      // Scale up proportionally beyond the default 50cm render depth.
+      const BASE_HEIGHT = 360;
+      const BASE_DEPTH = DEFAULT_RENDER_DEPTH_CM; // 50cm
+      const depthScale = Math.max(1, renderDepth / BASE_DEPTH);
+      const layerScale = 1 + expansionSteps * 0.3;
+      const height = Math.round(BASE_HEIGHT * depthScale * layerScale);
       pit.style.height = `${height}px`;
     }
 
@@ -4405,7 +5024,7 @@
         deletedTransects = saved.deletedTransects && typeof saved.deletedTransects === "object" ? saved.deletedTransects : {};
         activeTeam = saved.activeTeam && typeof saved.activeTeam === "object" ? saved.activeTeam : null;
         activeTransectName = String(saved.activeTransectName || "");
-        contextLabel = String(saved.contextLabel || activeTransectName || "T-01");
+        contextLabel = String(saved.contextLabel || activeTransectName || "S-01");
         renderDepth = Math.max(1, Number(saved.renderDepth) || DEFAULT_RENDER_DEPTH_CM);
         dirtyTransect = Boolean(saved.dirtyTransect);
         ensureDefaultTransectAvailable();
@@ -4415,7 +5034,7 @@
           pages = clone(snapshot.pages).map(ensurePageShape);
           pageIndex = clamp(Number(saved.pageIndex ?? snapshot.pageIndex) || 0, 0, pages.length - 1);
           renderDepth = Math.max(1, Number(snapshot.renderDepth) || DEFAULT_RENDER_DEPTH_CM);
-          contextLabel = String(snapshot.name || snapshot.transect || activeTransectName || contextLabel || "T-01");
+          contextLabel = String(snapshot.name || snapshot.transect || activeTransectName || contextLabel || "S-01");
         } else if (Array.isArray(saved.pages) && saved.pages.length) {
           pages = saved.pages.map(ensurePageShape);
           pageIndex = clamp(Number(saved.pageIndex) || 0, 0, pages.length - 1);
@@ -4649,10 +5268,10 @@
     }
 
     function isDefaultStarterTransect(name, snapshot) {
-      if (String(name || "") !== "T-01") return false;
+      if (String(name || "") !== "S-01") return false;
       if (!snapshot || !Array.isArray(snapshot.pages) || snapshot.pages.length !== 1) return false;
       const snapshotName = String(snapshot.name || snapshot.transect || name || "");
-      if (snapshotName && snapshotName !== "T-01") return false;
+      if (snapshotName && snapshotName !== "S-01") return false;
       const snapshotDepth = Math.max(1, Number(snapshot.renderDepth) || DEFAULT_RENDER_DEPTH_CM);
       if (snapshotDepth !== DEFAULT_RENDER_DEPTH_CM) return false;
       if ((Number(snapshot.pageIndex) || 0) !== 0) return false;
@@ -4660,10 +5279,10 @@
     }
 
     function pruneDefaultStarterTransectFromStore() {
-      if (!isDefaultStarterTransect("T-01", transectStore["T-01"])) return false;
-      delete transectStore["T-01"];
-      if (activeTransectName === "T-01") activeTransectName = "";
-      // Legacy helper retained for compatibility; production UX keeps a saved T-01 starter.
+      if (!isDefaultStarterTransect("S-01", transectStore["S-01"])) return false;
+      delete transectStore["S-01"];
+      if (activeTransectName === "S-01") activeTransectName = "";
+      // Legacy helper retained for compatibility; production UX keeps a saved S-01 starter.
       return true;
     }
 
@@ -4671,21 +5290,21 @@
       if (transectStore && Object.keys(transectStore).length) return false;
 
       const starter = starterPageTemplate();
-      contextLabel = "T-01";
-      activeTransectName = "T-01";
+      contextLabel = "S-01";
+      activeTransectName = "S-01";
       pages = [starterPageTemplate()];
       pageIndex = 0;
       renderDepth = DEFAULT_RENDER_DEPTH_CM;
       transectStore = {
-        "T-01": {
-          name: "T-01",
+        "S-01": {
+          name: "S-01",
           pageIndex: 0,
           renderDepth: DEFAULT_RENDER_DEPTH_CM,
           pages: [starter]
         }
       };
       const deletedSet = deletedTransectSet();
-      deletedSet.delete("T-01");
+      deletedSet.delete("S-01");
       saveDeletedTransectSet(deletedSet);
       dirtyTransect = false;
       return true;
@@ -4987,8 +5606,8 @@
       const nConflicts = conflict.stpConflicts.length;
       const nNew       = conflict.newRemotePages.length;
       const parts      = [];
-      if (nConflicts) parts.push(`${nConflicts} STP${nConflicts > 1 ? "s" : ""} differ`);
-      if (nNew)       parts.push(`${nNew} new STP${nNew > 1 ? "s" : ""} from team`);
+      if (nConflicts) parts.push(`${nConflicts} Profile${nConflicts > 1 ? "s" : ""} differ`);
+      if (nNew)       parts.push(`${nNew} new Profile${nNew > 1 ? "s" : ""} from team`);
 
       // Warn about local-only STPs that "Use theirs" would silently drop.
       const localById  = {};
@@ -4996,7 +5615,7 @@
       const remoteById = {};
       for (const p of (conflict.remoteSnapshot?.pages || [])) remoteById[p.id] = true;
       const nLocalOnly = Object.keys(localById).filter(id => !remoteById[id]).length;
-      if (nLocalOnly) parts.push(`${nLocalOnly} of your STP${nLocalOnly > 1 ? "s" : ""} not on team`);
+      if (nLocalOnly) parts.push(`${nLocalOnly} of your Profile${nLocalOnly > 1 ? "s" : ""} not on team`);
 
       const choice = await renderConflictModal({
         title:   conflict.transectName,
@@ -5045,13 +5664,13 @@
 
     // STP-level (reached only via Merge): Keep mine / Use theirs / Skip  — no merge
     async function resolveStpConflict(transectName, stp, index, total) {
-      $("conflictProgress").textContent = `STP ${index + 1} of ${total}`;
+      $("conflictProgress").textContent = `Profile ${index + 1} of ${total}`;
 
       const diffRows = buildStpDiffRows(stp.local, stp.remote);
 
       const choice = await renderConflictModal({
         title:   `${transectName} · STP ${stp.pageId}`,
-        body:    `STP ${stp.pageId} differs from the team version.`,
+        body:    `Profile ${stp.pageId} differs from the team version.`,
         diffRows,
         buttons: [
           { choice: "keep",   label: "Keep mine", primary: true },
@@ -5142,7 +5761,7 @@
         const currentName = currentTransectName();
         if (activeTransectName === deletedName || contextLabel === deletedName || currentName === deletedName) {
           activeTransectName = "";
-          contextLabel = "T-01";
+          contextLabel = "S-01";
           pages = [starterPageTemplate()];
           pageIndex = 0;
           renderDepth = DEFAULT_RENDER_DEPTH_CM;
@@ -5275,7 +5894,7 @@
           if (conflicts.length) {
             showStatus(`${baseStatus} Sync to review differences.`);
           } else if (autoMerge.length) {
-            showStatus(`${baseStatus} Loaded ${autoMerge.length} transect${autoMerge.length === 1 ? "" : "s"}.`);
+            showStatus(`${baseStatus} Loaded ${autoMerge.length} series${autoMerge.length === 1 ? "" : ""}.`);
           } else if (rows.length) {
             showStatus(baseStatus);
           } else {
@@ -5361,7 +5980,7 @@
 
     function snapshotTransect() {
       const name = currentTransectName();
-      contextLabel = name || contextLabel || "T-01";
+      contextLabel = name || contextLabel || "S-01";
 
       return {
         name: contextLabel,
@@ -5375,7 +5994,7 @@
       if (!snapshot || !Array.isArray(snapshot.pages) || !snapshot.pages.length) return false;
 
       const resetToFirstPage = Boolean(options && options.resetToFirstPage);
-      contextLabel = String(snapshot.name || snapshot.transect || name || "T-01");
+      contextLabel = String(snapshot.name || snapshot.transect || name || "S-01");
       pages = clone(snapshot.pages).map(ensurePageShape);
       pageIndex = resetToFirstPage ? 0 : clamp(Number(snapshot.pageIndex) || 0, 0, pages.length - 1);
       renderDepth = Math.max(1, Number(snapshot.renderDepth) || DEFAULT_RENDER_DEPTH_CM);
@@ -5390,7 +6009,7 @@
     function alignWorkingStateToSyncedStore() {
       if (activeTransectName && transectStore[activeTransectName]) {
         const snapshot = transectStore[activeTransectName];
-        contextLabel = String(snapshot.name || snapshot.transect || activeTransectName || contextLabel || "T-01");
+        contextLabel = String(snapshot.name || snapshot.transect || activeTransectName || contextLabel || "S-01");
         pages = clone(snapshot.pages || []).map(ensurePageShape);
         if (!pages.length) pages = [starterPageTemplate()];
         pageIndex = clamp(Number(snapshot.pageIndex) || 0, 0, pages.length - 1);
@@ -5405,7 +6024,7 @@
       if (names.length) {
         const name = names[0];
         const snapshot = transectStore[name];
-        contextLabel = String(snapshot.name || snapshot.transect || name || "T-01");
+        contextLabel = String(snapshot.name || snapshot.transect || name || "S-01");
         pages = clone(snapshot.pages || []).map(ensurePageShape);
         if (!pages.length) pages = [starterPageTemplate()];
         pageIndex = clamp(Number(snapshot.pageIndex) || 0, 0, pages.length - 1);
@@ -5421,7 +6040,7 @@
         pageIndex = 0;
       }
       activeTransectName = "";
-      contextLabel = contextLabel || "T-01";
+      contextLabel = contextLabel || "S-01";
       pageIndex = clamp(Number(pageIndex) || 0, 0, pages.length - 1);
       dirtyTransect = false;
     }
@@ -5462,7 +6081,7 @@
 
       // Update combo label
       const label = $("contextInput");
-      if (label) label.textContent = activeTransectName || contextLabel || "T-01";
+      if (label) label.textContent = activeTransectName || contextLabel || "S-01";
 
       // Resolve snapshot-pending class (was waiting for select.value confirmation)
       document.documentElement.classList.remove("pitprofile-transect-select-pending");
@@ -5509,7 +6128,7 @@
     function confirmAddTransect() {
       const suffix = ($("addTransectSuffix")?.value || "").trim();
       if (!suffix) { $("addTransectSuffix")?.focus(); return; }
-      const newName = "T-" + suffix;
+      const newName = "S-" + suffix;
       closeAddTransectModal();
 
       // 1. Lock in the current transect as-is before moving on
@@ -5547,7 +6166,7 @@
     // ── Per-row delete (bypasses select-based flow) ──
     function removeTransectByName(name) {
       if (!name || !transectStore[name]) {
-        showStatus("Transect not found.");
+        showStatus("Series not found.");
         return;
       }
       // Temporarily wire pending to use this name
@@ -5572,7 +6191,7 @@
       const name = currentTransectName();
 
       if (!name) {
-        showStatus("Enter a transect name first.");
+        showStatus("Enter a series name first.");
         return;
       }
 
@@ -5621,16 +6240,16 @@
       if (remaining.length) {
         applyTransectSnapshot(remaining[0], transectStore[remaining[0]], { resetToFirstPage: true });
       } else {
-        // Last transect deleted — seed a saved T-01 default
-        contextLabel = "T-01";
-        activeTransectName = "T-01";
+        // Last transect deleted — seed a saved S-01 default
+        contextLabel = "S-01";
+        activeTransectName = "S-01";
         pages = [starterPageTemplate()];
         pageIndex = 0;
         renderDepth = DEFAULT_RENDER_DEPTH_CM;
-        const defaultSnapshot = { name: "T-01", pageIndex: 0, renderDepth: DEFAULT_RENDER_DEPTH_CM, pages: [starterPageTemplate()] };
-        transectStore["T-01"] = defaultSnapshot;
+        const defaultSnapshot = { name: "S-01", pageIndex: 0, renderDepth: DEFAULT_RENDER_DEPTH_CM, pages: [starterPageTemplate()] };
+        transectStore["S-01"] = defaultSnapshot;
         const ds = deletedTransectSet();
-        ds.delete("T-01");
+        ds.delete("S-01");
         saveDeletedTransectSet(ds);
         dirtyTransect = false;
         refreshTransectDropdown();
@@ -5642,7 +6261,7 @@
 
     function clearAllTransects() {
       if (!Object.keys(transectStore).length) {
-        showStatus("No saved transects to clear.");
+        showStatus("No saved series to clear.");
         return;
       }
       setPending("clear-all-transects", "Clear all saved transects? This cannot be undone.");
@@ -5657,22 +6276,22 @@
       });
       saveDeletedTransectSet(deletedSet);
 
-      // Seed a saved T-01 default so there's never a void state
-        contextLabel = "T-01";
-        activeTransectName = "T-01";
+      // Seed a saved S-01 default so there's never a void state
+        contextLabel = "S-01";
+        activeTransectName = "S-01";
         pages = [starterPageTemplate()];
         pageIndex = 0;
         renderDepth = DEFAULT_RENDER_DEPTH_CM;
-        const defaultSnapshot = { name: "T-01", pageIndex: 0, renderDepth: DEFAULT_RENDER_DEPTH_CM, pages: [starterPageTemplate()] };
-        transectStore["T-01"] = defaultSnapshot;
+        const defaultSnapshot = { name: "S-01", pageIndex: 0, renderDepth: DEFAULT_RENDER_DEPTH_CM, pages: [starterPageTemplate()] };
+        transectStore["S-01"] = defaultSnapshot;
         const ds = deletedTransectSet();
-        ds.delete("T-01");
+        ds.delete("S-01");
         saveDeletedTransectSet(ds);
         dirtyTransect = false;
       pendingAction = null;
       refreshTransectDropdown();
       render();
-      showStatus("All transects cleared.");
+      showStatus("All series cleared.");
     }
 
     function selectTransect(name) {
@@ -6059,10 +6678,10 @@
     function bindTopBarInputs(current) {
       const ctxLabel = $("contextInput"); // now a <span>
       const changeBtn = $("changeStp");
-      if (ctxLabel) ctxLabel.textContent = activeTransectName || contextLabel || "T-01";
+      if (ctxLabel) ctxLabel.textContent = activeTransectName || contextLabel || "S-01";
       if (changeBtn && current) {
-        changeBtn.setAttribute("aria-label", `Change current STP number from ${current.id}`);
-        changeBtn.title = `Change STP ${current.id}`;
+        changeBtn.setAttribute("aria-label", `Change current Profile number from ${current.id}`);
+        changeBtn.title = `Change Profile ${current.id}`;
       }
     }
 
@@ -6288,6 +6907,152 @@
 
   <script>
     // ── Onboarding navigation ─────────────────────────────────────────
+    /* ── Guide Modal ── */
+    var guideCurrentSlide = 0;
+    var guideTotalSlides = 5;
+
+    // Munsell demo state
+    var gvmState = {
+      hues: ['2.5YR','5YR','7.5YR','10YR','2.5Y','5Y'],
+      hueIdx: 3,
+      vals: [2,3,4,5,6,7,8],
+      valIdx: 2,
+      chrs: [1,2,3,4,6,8],
+      chrIdx: 2
+    };
+    var HUE_RGB_MAP = {
+      '2.5YR':[142,77,46],'5YR':[157,95,48],'7.5YR':[170,119,58],'10YR':[179,143,75],
+      '2.5Y':[181,161,91],'5Y':[174,171,105]
+    };
+    function gvmRgb() {
+      var base = HUE_RGB_MAP[gvmState.hues[gvmState.hueIdx]] || [170,119,58];
+      var v = gvmState.vals[gvmState.valIdx];
+      var c = gvmState.chrs[gvmState.chrIdx];
+      var vf = v / 8;
+      var cf = c / 8;
+      return [
+        Math.round(base[0] * vf * (0.6 + cf*0.4)),
+        Math.round(base[1] * vf * (0.7 + cf*0.3)),
+        Math.round(base[2] * vf * (0.8 + cf*0.2))
+      ];
+    }
+    function gvmUpdate() {
+      var s = gvmState;
+      var rgb = gvmRgb();
+      var sw = document.getElementById('gvmSwatch');
+      var cd = document.getElementById('gvmCode');
+      var hEl = document.getElementById('gvmHue');
+      var vEl = document.getElementById('gvmVal');
+      var cEl = document.getElementById('gvmChr');
+      if (!sw) return;
+      sw.style.backgroundColor = 'rgb('+rgb[0]+','+rgb[1]+','+rgb[2]+')';
+      if (cd) cd.textContent = s.hues[s.hueIdx]+' '+s.vals[s.valIdx]+'/'+s.chrs[s.chrIdx];
+      if (hEl) hEl.textContent = s.hues[s.hueIdx];
+      if (vEl) vEl.textContent = s.vals[s.valIdx];
+      if (cEl) cEl.textContent = s.chrs[s.chrIdx];
+    }
+    window.gvmStep = function(field, dir) {
+      if (field === 'hue') gvmState.hueIdx = Math.max(0, Math.min(gvmState.hues.length-1, gvmState.hueIdx+dir));
+      if (field === 'val') gvmState.valIdx = Math.max(0, Math.min(gvmState.vals.length-1, gvmState.valIdx+dir));
+      if (field === 'chr') gvmState.chrIdx = Math.max(0, Math.min(gvmState.chrs.length-1, gvmState.chrIdx+dir));
+      gvmUpdate();
+    };
+
+    // Artifact demo — auto-cycles on slide 4
+    var gvArtTypes = ['Lithic','Ceramic','Glass','Bone','Shell','Metal','Organic','Building','Unknown'];
+    var gvArtIcons = {Lithic:'♦',Ceramic:'🏺',Glass:'🍸',Bone:'🦴',Shell:'🐚',Metal:'🔩',Organic:'🌿',Building:'🧱',Unknown:'❓'};
+    var gvArtIdx = 1;
+    var gvArtTimer = null;
+    function gvArtUpdate() {
+      var t = gvArtTypes[gvArtIdx];
+      var iconEl = document.getElementById('gvArtIcon');
+      var labelEl = document.getElementById('gvArtLabel');
+      if (iconEl) iconEl.textContent = gvArtIcons[t] || '?';
+      if (labelEl) labelEl.textContent = t;
+    }
+    function gvArtStart() {
+      if (gvArtTimer) return;
+      gvArtUpdate();
+      gvArtTimer = setInterval(function() {
+        gvArtIdx = (gvArtIdx + 1) % gvArtTypes.length;
+        gvArtUpdate();
+      }, 900);
+    }
+    function gvArtStop() {
+      if (gvArtTimer) { clearInterval(gvArtTimer); gvArtTimer = null; }
+    }
+    var gvWfTimer = null;
+    var gvWfCurrent = 0;
+    function gvWfAnimate() {
+      if (gvWfTimer) return;
+      gvWfTimer = setInterval(function() {
+        for (var i = 0; i < 4; i++) {
+          var el = document.getElementById('gvWf'+i);
+          if (el) el.classList.toggle('gv-wf-active', i === gvWfCurrent);
+        }
+        gvWfCurrent = (gvWfCurrent + 1) % 4;
+      }, 900);
+    }
+    function gvWfStop() {
+      if (gvWfTimer) { clearInterval(gvWfTimer); gvWfTimer = null; }
+      gvWfCurrent = 0;
+    }
+
+    function guideBuildDots() {
+      var container = document.getElementById('guideDots');
+      if (!container) return;
+      container.innerHTML = '';
+      for (var i = 0; i < guideTotalSlides; i++) {
+        var d = document.createElement('button');
+        d.className = 'guide-dot' + (i === 0 ? ' active' : '');
+        d.setAttribute('aria-label', 'Go to slide '+(i+1));
+        d.dataset.idx = i;
+        d.addEventListener('click', function(){ guideGoTo(parseInt(this.dataset.idx)); });
+        container.appendChild(d);
+      }
+    }
+
+    function guideGoTo(idx) {
+      var slides = document.querySelectorAll('.guide-slide');
+      var dots = document.querySelectorAll('.guide-dot');
+      slides.forEach(function(s){ s.classList.remove('active'); });
+      dots.forEach(function(d){ d.classList.remove('active'); });
+      guideCurrentSlide = idx;
+      if (slides[idx]) slides[idx].classList.add('active');
+      if (dots[idx]) dots[idx].classList.add('active');
+      var prev = document.getElementById('guidePrev');
+      var next = document.getElementById('guideNext');
+      var cta = document.getElementById('guideCta');
+      if (prev) prev.disabled = idx === 0;
+      if (next) { next.disabled = idx === guideTotalSlides - 1; next.style.visibility = idx === guideTotalSlides - 1 ? 'hidden' : ''; }
+      if (cta) { if (idx === guideTotalSlides - 1) { cta.removeAttribute('hidden'); } else { cta.setAttribute('hidden',''); } }
+      // side effects per slide
+      if (idx === 1) { setTimeout(gvmUpdate, 50); }
+      if (idx === 4) { gvArtStart(); } else { gvArtStop(); }
+      if (idx === 3) { gvWfAnimate(); } else { gvWfStop(); }
+    }
+
+    window.guideNav = function(dir) { guideGoTo(Math.max(0, Math.min(guideTotalSlides-1, guideCurrentSlide+dir))); };
+
+    window.openGuideModal = function(e) {
+      if (e && e.preventDefault) e.preventDefault();
+      var modal = document.getElementById('guide-modal');
+      if (!modal) return;
+      modal.removeAttribute('hidden');
+      guideBuildDots();
+      guideGoTo(0);
+      document.addEventListener('keydown', guideEscHandler);
+    };
+    window.closeGuideModal = function() {
+      var modal = document.getElementById('guide-modal');
+      if (modal) modal.setAttribute('hidden', '');
+      gvWfStop();
+      gvArtStop();
+      document.removeEventListener('keydown', guideEscHandler);
+    };
+    function guideEscHandler(e) { if (e.key === 'Escape') closeGuideModal(); }
+    // Guide is now full-page — no overlay click-to-close needed
+
     function obGoStep(n) {
       document.querySelectorAll('.ob-page').forEach(p => p.classList.remove('active'));
       document.getElementById('ob-step-' + n).classList.add('active');
