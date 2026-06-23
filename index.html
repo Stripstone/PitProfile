@@ -3407,8 +3407,8 @@
 
     function setPage(updater) {
       pages = pages.map((p, i) => i === pageIndex ? ensurePageShape(updater(clone(p))) : p);
-  
-    render();
+      dirtyTransect = true;
+      render();
     }
 
     function updateColor(layer, patch) {
