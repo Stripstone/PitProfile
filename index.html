@@ -1839,6 +1839,9 @@
     position: absolute;
     inset: 0 36px 0 0;
   }
+  .artifact-overlay .artifact-tag {
+    pointer-events: auto;
+  }
   .labels-overlay { z-index: 40; }
   .artifact-overlay { z-index: 45; }
 
@@ -1866,21 +1869,22 @@
     border-radius: 999px;
     background: rgba(255, 255, 255, 0.82);
     color: var(--stone-900);
-    padding: 2px 7px;
+    padding: 5px 7px;
     font-size: 10px;
     font-weight: 900;
     white-space: nowrap;
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
-    opacity: 0;
-    animation: artifactTagFade 2.2s ease-out forwards;
+    opacity: 1;
   }
 
+  /* ARCHIVED -- artifactTagFade animation, kept for potential future use
   @keyframes artifactTagFade {
     0%   { opacity: 0; transform: translateY(-50%) translateX(-6px) scale(0.97); }
     10%  { opacity: 1; transform: translateY(-50%) translateX(0) scale(1); }
     82%  { opacity: 1; transform: translateY(-50%) translateX(0) scale(1); }
     100% { opacity: 0; transform: translateY(-50%) translateX(4px) scale(0.98); }
   }
+  END ARCHIVED */
 
   /* Rendering Rows UI Labels */
   .render-row {
@@ -2759,15 +2763,22 @@
     const VALUES = [2, 3, 4, 5, 6, 7, 8];
     const CHROMAS = [1, 2, 3, 4, 6, 8];
     const LAYERS = ["A", "B", "C"];
-    const ARTIFACT_TYPES = ["", "🪨", "🏺", "🦴", "🔩", "🐚", "❓"];
+    const ARTIFACT_TYPES = ["", "Feature", "Lithic", "Ceramic", "Glass", "Bone", "Shell", "Metal", "Leather", "Textile", "Organic", "Building", "Synthetic", "Unknown"];
 
-    const ARTIFACT_LABELS = {
-      "🪨": "Lithic",
-      "🏺": "Ceramic",
-      "🦴": "Bone",
-      "🔩": "Metal",
-      "🐚": "Shell",
-      "❓": "Unknown"
+    const ARTIFACT_ICONS = {
+      "Feature":   "🏛️",
+      "Lithic":    "♦",
+      "Ceramic":   "🏺",
+      "Glass":     "🍸",
+      "Bone":      "🦴",
+      "Shell":     "🐚",
+      "Metal":     "🔩",
+      "Leather":   "🟫",
+      "Textile":   "🧵",
+      "Organic":   "🌿",
+      "Building":  "🧱",
+      "Synthetic": "🧴",
+      "Unknown":   "❓"
     };
     const SOIL_TYPES = [
       "Type",
@@ -2810,7 +2821,7 @@
           C: { hueNumber: 10, hueFamily: "YR", value: 6, chroma: 4, active: false, soilType: "Type" }
         },
         extents: { A: 9, B: 26, C: 35 },
-        artifacts: { A: "", B: "", C: "" }
+        artifacts: { A: { type: "", note: "" }, B: { type: "", note: "" }, C: { type: "", note: "" } }
       }
     ];
 
@@ -3393,10 +3404,24 @@
 
     function ensurePageShape(p) {
       if (!p.artifacts || typeof p.artifacts !== "object") {
-        p.artifacts = { A: "", B: "", C: "" };
+        p.artifacts = {};
       }
       for (const layer of LAYERS) {
-        if (typeof p.artifacts[layer] !== "string") p.artifacts[layer] = "";
+        const a = p.artifacts[layer];
+        if (!a || typeof a !== "object") {
+          // Coerce legacy string value or missing entry to new shape
+          const legacyType = typeof a === "string" ? a : "";
+          // Map old emoji keys to vocabulary strings
+          const LEGACY_EMOJI_MAP = {
+            "🪨": "Lithic", "🏺": "Ceramic", "🦴": "Bone",
+            "🔩": "Metal",  "🐚": "Shell",   "❓": "Unknown"
+          };
+          const resolvedType = LEGACY_EMOJI_MAP[legacyType] || (ARTIFACT_TYPES.includes(legacyType) ? legacyType : "");
+          p.artifacts[layer] = { type: resolvedType, note: "" };
+        } else {
+          if (!ARTIFACT_TYPES.includes(a.type)) a.type = "";
+          if (typeof a.note !== "string") a.note = "";
+        }
       }
       return p;
     }
@@ -3438,26 +3463,31 @@
     function cycleArtifact(layer) {
       setPage((p) => {
         ensurePageShape(p);
-        const current = p.artifacts[layer] || "";
+        const current = p.artifacts[layer].type || "";
         const idx = ARTIFACT_TYPES.indexOf(current);
-        p.artifacts[layer] = ARTIFACT_TYPES[(idx < 0 ? 0 : idx + 1) % ARTIFACT_TYPES.length];
+        const nextType = ARTIFACT_TYPES[(idx < 0 ? 0 : idx + 1) % ARTIFACT_TYPES.length];
+        p.artifacts[layer] = { type: nextType, note: "" };
         revealArtifactLabels();
         return p;
       });
     }
 
     function clearArtifact(layer) {
-      if (!page().artifacts?.[layer]) return;
+      if (!page().artifacts?.[layer]?.type) return;
       setPage((p) => {
         ensurePageShape(p);
-        p.artifacts[layer] = "";
+        p.artifacts[layer] = { type: "", note: "" };
         return p;
       });
     }
 
     function revealArtifactLabels() {
       showArtifactLabels = true;
-      artifactRevealNonce = Date.now();
+    }
+
+    function toggleArtifactLabels() {
+      showArtifactLabels = !showArtifactLabels;
+      render();
     }
 
     function insertPageAfterCurrent(renumberTail = false) {
@@ -3472,7 +3502,7 @@
       }
 
       const newPage = { ...clone(current), id: newId };
-      newPage.artifacts = { A: "", B: "", C: "" };
+      newPage.artifacts = { A: { type: "", note: "" }, B: { type: "", note: "" }, C: { type: "", note: "" } };
       let newPages  = [...pages.slice(0, insertAt), newPage, ...pages.slice(insertAt)];
 
       if (renumberTail) {
@@ -3680,24 +3710,76 @@
       let topCm = 0;
 
       segments.forEach((segment, index) => {
-        const marker = current.artifacts?.[segment.layer] || "";
+        const artifact = current.artifacts?.[segment.layer];
+        const artifactType = artifact?.type || "";
         const centerCm = topCm + Math.max(segment.thickness, 0) / 2;
         topCm += Math.max(segment.thickness, 0);
 
-        if (!marker) return;
+        if (!artifactType) return;
+
+        const icon = ARTIFACT_ICONS[artifactType] || "?";
+        const layer = segment.layer;
 
         const dot = document.createElement("div");
         dot.className = "artifact-marker";
-        dot.textContent = marker;
-        dot.title = `${segment.layer} artifact`;
+        dot.textContent = icon;
+        dot.title = `${layer}: ${artifactType}`;
         dot.style.top = `${cmToPct(centerCm, renderDepth)}%`;
         dot.style.left = `${50 + (index - 1) * 7}%`;
+        dot.style.pointerEvents = "auto";
+        dot.style.cursor = "default";
+        dot.addEventListener("click", (e) => {
+          e.stopPropagation();
+          toggleArtifactLabels();
+        });
 
         if (showArtifactLabels) {
+          const note = artifact?.note || "";
           const tag = document.createElement("div");
           tag.className = "artifact-tag";
-          tag.textContent = ARTIFACT_LABELS[marker] || "Artifact";
+          tag.textContent = note ? `${artifactType} — ${note}` : artifactType;
           tag.dataset.reveal = String(artifactRevealNonce);
+          tag.style.pointerEvents = "auto";
+          tag.style.cursor = "text";
+
+          tag.addEventListener("click", (e) => {
+            e.stopPropagation();
+            if (tag.querySelector("input")) return;
+            // Freeze the tag in place — cancel its fade animation
+            tag.style.animation = "none";
+            tag.style.opacity = "1";
+            tag.style.transform = "translateY(-50%)";
+
+            const input = document.createElement("input");
+            input.type = "text";
+            input.value = note;
+            input.placeholder = "add note…";
+            input.style.cssText = [
+              "border:none", "outline:none", "background:transparent",
+              "font:inherit", "color:inherit", "width:90px",
+              "padding:0", "margin:0"
+            ].join(";");
+
+            tag.textContent = `${artifactType} — `;
+            tag.appendChild(input);
+            input.focus();
+            input.select();
+
+            function commit() {
+              const newNote = input.value.trim();
+              setPage((p) => {
+                ensurePageShape(p);
+                p.artifacts[layer] = { type: artifactType, note: newNote };
+                return p;
+              });
+            }
+            input.addEventListener("blur", commit);
+            input.addEventListener("keydown", (e) => {
+              if (e.key === "Enter") input.blur();
+              if (e.key === "Escape") { input.value = note; input.blur(); }
+            });
+          });
+
           dot.appendChild(tag);
         }
 
@@ -3777,7 +3859,6 @@
       renderTransitionOverlays(segments);
       renderLabelsOverlay(segments);
       renderArtifactOverlay(current, segments);
-      showArtifactLabels = false;
 
       const remainingRenderDepth = Math.max(renderDepth - renderedThickness, 0);
       if (remainingRenderDepth > 0) {
@@ -3834,7 +3915,7 @@
         return `
           <div class="row ${active ? "" : "off"}">
             <div class="row-grid">
-              <button class="layer-toggle ${current.artifacts?.[layer] ? "has-artifact" : ""}" data-action="toggle" data-layer="${layer}" data-artifact="${current.artifacts?.[layer] || ""}">${layer}</button>
+              <button class="layer-toggle ${current.artifacts?.[layer]?.type ? "has-artifact" : ""}" data-action="toggle" data-layer="${layer}" data-artifact="${ARTIFACT_ICONS[current.artifacts?.[layer]?.type] || ""}">${layer}</button>
               ${renderStepper(color.hueFamily === "GLEY" ? "—" : color.hueNumber, { action: "step", layer, field: "hueNumberUp" }, { action: "step", layer, field: "hueNumberDown" })}
               ${renderStepper(color.hueFamily, { action: "step", layer, field: "familyUp" }, { action: "step", layer, field: "familyDown" }, hueFamilyInput)}
               ${renderStepper(color.value, { action: "step", layer, field: "valueUp" }, { action: "step", layer, field: "valueDown" })}
@@ -3900,7 +3981,7 @@
             setPage((p) => {
               p.layers.C.active = false;
               ensurePageShape(p);
-              p.artifacts.C = "";
+              p.artifacts.C = { type: "", note: "" };
               return p;
             });
           }
@@ -4277,7 +4358,7 @@
           C: { hueNumber: 10, hueFamily: "YR", value: 6, chroma: 4, active: false, soilType: "Type" }
         },
         extents: { A: 9, B: 26, C: 35 },
-        artifacts: { A: "", B: "", C: "" }
+        artifacts: { A: { type: "", note: "" }, B: { type: "", note: "" }, C: { type: "", note: "" } }
       });
     }
 
@@ -4728,8 +4809,12 @@
         const lStr = l.active ? `${l.hueNumber}${l.hueFamily} ${l.value}/${l.chroma}` : "off";
         const rStr = r.active ? `${r.hueNumber}${r.hueFamily} ${r.value}/${r.chroma}` : "off";
         if (lStr !== rStr) rows.push({ field: `Layer ${layer}`, mine: lStr, theirs: rStr });
-        const lA = local.artifacts?.[layer] || "—";
-        const rA = remote.artifacts?.[layer] || "—";
+        const fmtArtifact = (a) => {
+          if (!a || !a.type) return "—";
+          return a.note ? `${a.type} — ${a.note}` : a.type;
+        };
+        const lA = fmtArtifact(local.artifacts?.[layer]);
+        const rA = fmtArtifact(remote.artifacts?.[layer]);
         if (lA !== rA) rows.push({ field: `${layer} artifact`, mine: lA, theirs: rA });
       }
       if (!pageFieldsEqual(local.extents, remote.extents)) {
@@ -5005,7 +5090,6 @@
       activeTransectName = contextLabel;
       if (dirtyTransect) syncDiag("state: dirty cleared by applyTransectSnapshot");
       dirtyTransect = false;
-      revealArtifactLabels();
       pendingAction = null;
       render();
       return true;
@@ -5618,7 +5702,6 @@
       sortPagesByStpKeepingPage(updatedPage);
       dirtyTransect = true;
       pendingAction = null;
-      revealArtifactLabels();
       closeChangeStpModal();
       render();
       return true;
@@ -5660,7 +5743,6 @@
       }
 
       pageIndex = targetIndex;
-      revealArtifactLabels();
       pendingAction = null;
       render();
     }
@@ -5723,14 +5805,12 @@
 
     $("prevPage").addEventListener("click", () => {
       pageIndex = clamp(pageIndex - 1, 0, pages.length - 1);
-      revealArtifactLabels();
       pendingAction = null;
       render();
     });
 
     $("nextPage").addEventListener("click", () => {
       pageIndex = clamp(pageIndex + 1, 0, pages.length - 1);
-      revealArtifactLabels();
       pendingAction = null;
       render();
     });
