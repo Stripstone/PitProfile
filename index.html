@@ -4686,14 +4686,11 @@
         ]
       });
 
-      if (choice === "theirs" || choice === "skip") {
-        // Use theirs: explicit remote preference.
-        // Skip: user deferred, server version preserved to avoid pushing
-        // local data that would overwrite teammates unexpectedly.
+      if (choice === "theirs") {
         const snap = transectStore[transectName];
         if (snap) snap.pages = snap.pages.map(p => p.id === stp.pageId ? stp.remote : p);
       }
-      // "keep" → local stays, pushed as authoritative
+      // "keep" / "skip" → local stays, pushed as authoritative
     }
 
     function buildStpDiffRows(local, remote) {
