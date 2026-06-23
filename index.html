@@ -1933,7 +1933,7 @@
 
   .row-grid {
     display: grid;
-    grid-template-columns: 1.75rem 2.2rem 2.55rem 2.15rem 0.3rem 2.15rem minmax(2.5rem, 1fr) 3.4rem 1.35rem;
+    grid-template-columns: 1.75rem 1.35rem 2.2rem 2.55rem 2.15rem 0.3rem 2.15rem minmax(2.5rem, 1fr) max-content max-content;
     align-items: center;
     gap: 3px;
     min-width: 0;
@@ -2090,6 +2090,30 @@
     font-weight: 900;
   }
 
+  .row-actions {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 3px;
+  }
+
+  .row-action-btn {
+    height: 40px;
+    min-width: 1.35rem;
+    padding: 0 5px;
+    border-radius: 12px;
+    background: var(--stone-100);
+    color: var(--stone-500);
+    font-size: 14px;
+    font-weight: 900;
+    line-height: 1;
+  }
+  .artifact-cycle-placeholder {
+    height: 40px;
+    min-width: 1.35rem;
+  }
+
   .empty-cell {
     height: 40px;
     border: 1px solid rgba(0, 0, 0, 0.10);
@@ -2173,7 +2197,7 @@
       padding: 7px;
     }
     .row-grid {
-      grid-template-columns: 2.4rem 3rem 3.4rem 2.9rem 0.4rem 2.9rem minmax(3.5rem, 1fr) 4.8rem 1.8rem;
+      grid-template-columns: 2.4rem 3rem 3.4rem 2.9rem 2.9rem 0.4rem 2.9rem minmax(3.5rem, 1fr) max-content max-content;
       gap: 5px;
     }
     .layer-toggle {
@@ -2218,6 +2242,12 @@
       font-size: 17px;
       border-radius: 15px;
     }
+    .row-action-btn {
+      height: 54px;
+      min-width: 1.8rem;
+      font-size: 17px;
+      border-radius: 15px;
+    }
     .empty-cell {
       height: 54px;
       border-radius: 15px;
@@ -2235,7 +2265,7 @@
       height: 420px;
     }
     .row-grid {
-      grid-template-columns: 2.7rem 3.3rem 3.8rem 3.2rem 0.5rem 3.2rem minmax(4rem, 1fr) 5.5rem 2rem;
+      grid-template-columns: 2.7rem 3.3rem 3.8rem 3.2rem 3.2rem 0.5rem 3.2rem minmax(4rem, 1fr) max-content max-content;
       gap: 6px;
     }
   }
@@ -2762,7 +2792,11 @@
     const HUE_FAMILIES = ["R", "YR", "Y", "RP", "GLEY"];
     const VALUES = [2, 3, 4, 5, 6, 7, 8];
     const CHROMAS = [1, 2, 3, 4, 6, 8];
-    const LAYERS = ["A", "B", "C"];
+    const DEFAULT_HORIZONS = ["A", "B", "C"];
+    const HORIZON_CYCLE_ORDER = ["A", "E", "B", "C"];
+    const PENDING_HORIZON_CYCLE_ORDER = ["A", "E", "B"];
+    const PENDING_LAYER_ID = "__pending_layer__";
+    const E_DEFAULT_LAYER = { hueNumber: 10, hueFamily: "YR", value: 6, chroma: 2, active: true, soilType: "Loam" };
     const ARTIFACT_TYPES = ["", "Feature", "Lithic", "Ceramic", "Glass", "Bone", "Shell", "Metal", "Leather", "Textile", "Organic", "Building", "Synthetic", "Unknown"];
 
     const ARTIFACT_ICONS = {
@@ -2801,7 +2835,8 @@
       gaugePx: 16
     };
     const LABEL_RENDER = {
-      minTopPx: 24
+      minTopPx: 24,
+      firstALabelLiftPx: 8
     };
 
     const HUE_RGB = {
@@ -2815,13 +2850,13 @@
     let pages = [
       {
         id: 1,
+        layerOrder: ["L1", "L2"],
         layers: {
-          A: { hueNumber: 10, hueFamily: "YR", value: 4, chroma: 2, active: true, soilType: "Type" },
-          B: { hueNumber: 7.5, hueFamily: "YR", value: 5, chroma: 4, active: true, soilType: "Type" },
-          C: { hueNumber: 10, hueFamily: "YR", value: 6, chroma: 4, active: false, soilType: "Type" }
+          L1: { horizon: "A", hueNumber: 10, hueFamily: "YR", value: 2, chroma: 2, active: true, soilType: "Type" },
+          L2: { horizon: "B", hueNumber: 10, hueFamily: "YR", value: 3, chroma: 2, active: true, soilType: "Type" }
         },
-        extents: { A: 9, B: 26, C: 35 },
-        artifacts: { A: { type: "", note: "" }, B: { type: "", note: "" }, C: { type: "", note: "" } }
+        extents: { L1: 9, L2: 26 },
+        artifacts: { L1: { type: "", note: "" }, L2: { type: "", note: "" } }
       }
     ];
 
@@ -2833,6 +2868,7 @@
     let transectStore = {};
     let activeTransectName = "";
     let dirtyTransect = false;
+    let pendingHorizonLayer = "A";
     let pendingSelectionName = "";
     let pendingDownloadExport = null;
     const LOCAL_SAVE_KEY = "munsell-stp-local-working-save-v1";
@@ -3352,10 +3388,186 @@
       return HUE_FAMILIES.includes(cleaned) ? cleaned : null;
     }
 
-    function isDepthOrderValid(layer, extents) {
-      if (layer === "A") return extents.A < extents.B;
-      if (layer === "B") return extents.A < extents.B && extents.B < extents.C;
-      if (layer === "C") return extents.B < extents.C;
+    function normalizeHorizonLabel(label) {
+      const cleaned = String(label || "").trim().toUpperCase();
+      return HORIZON_CYCLE_ORDER.includes(cleaned) ? cleaned : "A";
+    }
+
+    function layerDefaults(horizon) {
+      const label = normalizeHorizonLabel(horizon);
+      if (label === "E") return { ...E_DEFAULT_LAYER, horizon: "E", active: true };
+      if (label === "A") return { horizon: "A", hueNumber: 10, hueFamily: "YR", value: 2, chroma: 2, active: true, soilType: "Type" };
+      if (label === "B") return { horizon: "B", hueNumber: 10, hueFamily: "YR", value: 3, chroma: 2, active: true, soilType: "Type" };
+      if (label === "C") return { horizon: "C", hueNumber: 10, hueFamily: "YR", value: 4, chroma: 2, active: true, soilType: "Type" };
+      return { horizon: label, hueNumber: 10, hueFamily: "YR", value: 2, chroma: 2, active: true, soilType: "Type" };
+    }
+
+    function newLayerDefaults(horizon) {
+      const label = normalizeHorizonLabel(horizon);
+      if (label === "E") return { ...E_DEFAULT_LAYER, horizon: "E", active: true };
+      if (label === "A") return { horizon: "A", hueNumber: 10, hueFamily: "YR", value: 2, chroma: 2, active: true, soilType: "Type" };
+      if (label === "B") return { horizon: "B", hueNumber: 10, hueFamily: "YR", value: 3, chroma: 2, active: true, soilType: "Type" };
+      if (label === "C") return { horizon: "C", hueNumber: 10, hueFamily: "YR", value: 4, chroma: 2, active: true, soilType: "Type" };
+      return { horizon: label, hueNumber: 10, hueFamily: "YR", value: 2, chroma: 2, active: true, soilType: "Type" };
+    }
+
+    function horizonLabelForLayer(current, layerId) {
+      if (layerId === PENDING_LAYER_ID) return normalizePendingHorizonLayer(current);
+      return normalizeHorizonLabel(current?.layers?.[layerId]?.horizon || layerId);
+    }
+
+    function nextLayerId(p) {
+      ensurePageShape(p);
+      let max = 0;
+      Object.keys(p.layers || {}).forEach((key) => {
+        const match = String(key).match(/^L(\d+)$/);
+        if (match) max = Math.max(max, Number(match[1]) || 0);
+      });
+      return `L${max + 1}`;
+    }
+
+    function normalizeArtifactValue(a) {
+      if (!a || typeof a !== "object") {
+        const legacyType = typeof a === "string" ? a : "";
+        const LEGACY_EMOJI_MAP = { "🪨": "Lithic", "🏺": "Ceramic", "🦴": "Bone", "🔩": "Metal", "🐚": "Shell", "❓": "Unknown" };
+        const resolvedType = LEGACY_EMOJI_MAP[legacyType] || (ARTIFACT_TYPES.includes(legacyType) ? legacyType : "");
+        return { type: resolvedType, note: "" };
+      }
+      const next = { ...a };
+      if (!ARTIFACT_TYPES.includes(next.type)) next.type = "";
+      if (typeof next.note !== "string") next.note = "";
+      return next;
+    }
+
+    function legacyActiveLayerOrder(p) {
+      const legacyOrder = ["A", "E", "B", "C"];
+      const order = [];
+      legacyOrder.forEach((key) => {
+        if (p.layers?.[key]?.active === true || key === "A") order.push(key);
+      });
+      if (!order.length) order.push("A");
+      return order;
+    }
+
+    function ensurePageShape(p) {
+      if (!p.layers || typeof p.layers !== "object") p.layers = {};
+      if (!p.extents || typeof p.extents !== "object") p.extents = {};
+      if (!p.artifacts || typeof p.artifacts !== "object") p.artifacts = {};
+
+      if (!Array.isArray(p.layerOrder) || !p.layerOrder.length) {
+        const legacyOrder = legacyActiveLayerOrder(p);
+        const nextLayers = {};
+        const nextExtents = {};
+        const nextArtifacts = {};
+        p.layerOrder = legacyOrder.map((legacyKey, index) => {
+          const id = `L${index + 1}`;
+          const legacy = p.layers[legacyKey] && typeof p.layers[legacyKey] === "object" ? p.layers[legacyKey] : {};
+          const horizon = normalizeHorizonLabel(legacy.horizon || legacyKey);
+          nextLayers[id] = { ...layerDefaults(horizon), ...legacy, horizon, active: true };
+          nextExtents[id] = Number.isFinite(Number(p.extents[legacyKey])) ? Number(p.extents[legacyKey]) : (index + 1) * 10;
+          nextArtifacts[id] = normalizeArtifactValue(p.artifacts[legacyKey]);
+          return id;
+        });
+        p.layers = nextLayers;
+        p.extents = nextExtents;
+        p.artifacts = nextArtifacts;
+      }
+
+      p.layerOrder = p.layerOrder.filter((id, index, arr) => typeof id === "string" && id !== PENDING_LAYER_ID && arr.indexOf(id) === index);
+      if (!p.layerOrder.length) p.layerOrder = ["L1"];
+
+      p.layerOrder.forEach((id, index) => {
+        const existing = p.layers[id] && typeof p.layers[id] === "object" ? p.layers[id] : {};
+        const horizon = normalizeHorizonLabel(existing.horizon || DEFAULT_HORIZONS[index] || "C");
+        p.layers[id] = { ...layerDefaults(horizon), ...existing, horizon, active: true };
+        if (!Number.isFinite(Number(p.extents[id]))) {
+          const previous = p.layerOrder[index - 1];
+          const base = previous ? Number(p.extents[previous]) || 0 : 0;
+          p.extents[id] = base + (index === 0 ? 9 : 10);
+        } else {
+          p.extents[id] = Number(p.extents[id]);
+        }
+        p.artifacts[id] = normalizeArtifactValue(p.artifacts[id]);
+      });
+
+      // Remove stale non-row instance keys so future saves are true row-stack saves, not A/B/C/E slot saves.
+      Object.keys(p.layers).forEach((id) => { if (!p.layerOrder.includes(id)) delete p.layers[id]; });
+      Object.keys(p.extents).forEach((id) => { if (!p.layerOrder.includes(id)) delete p.extents[id]; });
+      Object.keys(p.artifacts).forEach((id) => { if (!p.layerOrder.includes(id)) delete p.artifacts[id]; });
+      return p;
+    }
+
+    function activeLayerOrder(current = page()) {
+      ensurePageShape(current);
+      return current.layerOrder.slice();
+    }
+
+    function allLayerOrder(current = page()) {
+      return activeLayerOrder(current);
+    }
+
+    function activeHasHorizon(current, horizon, exceptLayerId = null) {
+      ensurePageShape(current);
+      const target = normalizeHorizonLabel(horizon);
+      return activeLayerOrder(current).some((id) => {
+        if (id === exceptLayerId) return false;
+        return horizonLabelForLayer(current, id) === target;
+      });
+    }
+
+    function horizonCycleOrderFor(current, layerId = null) {
+      ensurePageShape(current);
+      const isPending = layerId === PENDING_LAYER_ID || !layerId;
+      const sourceOrder = isPending ? PENDING_HORIZON_CYCLE_ORDER : HORIZON_CYCLE_ORDER;
+      const currentLabel = layerId && layerId !== PENDING_LAYER_ID ? horizonLabelForLayer(current, layerId) : null;
+      return sourceOrder.filter((label) => {
+        if (label !== "E") return true;
+        return currentLabel === "E" || !activeHasHorizon(current, "E", layerId);
+      });
+    }
+
+    function normalizePendingHorizonLayer(current = page()) {
+      const order = horizonCycleOrderFor(current, PENDING_LAYER_ID);
+      if (!order.includes(pendingHorizonLayer)) pendingHorizonLayer = order[0] || "A";
+      return pendingHorizonLayer;
+    }
+
+    function nextPendingHorizonAfterAdd(addedHorizon, current = page()) {
+      const added = normalizeHorizonLabel(addedHorizon);
+      const proposed = added === "A" ? "B" : "A";
+      const order = horizonCycleOrderFor(current, PENDING_LAYER_ID);
+      return order.includes(proposed) ? proposed : (order[0] || "A");
+    }
+
+    function rowLayerOrder(current) {
+      const order = activeLayerOrder(current);
+      order.push(PENDING_LAYER_ID);
+      return order;
+    }
+
+    function isPendingLayerRow(current, layerId) {
+      return layerId === PENDING_LAYER_ID;
+    }
+
+    function isRemovableLayer(current, layerId) {
+      if (layerId === PENDING_LAYER_ID) return false;
+      const order = activeLayerOrder(current);
+      return order.length > 1 && order.includes(layerId);
+    }
+
+    function isDepthOrderValid(layerId, extents, current = page()) {
+      if (layerId === PENDING_LAYER_ID) return true;
+      const order = activeLayerOrder(current);
+      const index = order.indexOf(layerId);
+      if (index < 0) return true;
+      const cm = Number(extents?.[layerId]);
+      if (!Number.isFinite(cm)) return false;
+      const previousLayer = order[index - 1];
+      const nextLayer = order[index + 1];
+      const previousCm = previousLayer ? Number(extents?.[previousLayer]) : 0;
+      const nextCm = nextLayer ? Number(extents?.[nextLayer]) : null;
+      if (previousLayer && !(previousCm < cm)) return false;
+      if (nextLayer && !(cm < nextCm)) return false;
       return true;
     }
 
@@ -3367,63 +3579,46 @@
       return Math.round((pct / 100) * Math.max(depth, 1));
     }
 
-    function rangeStart(layer, extents) {
-      if (layer === "A") return null;
-      if (layer === "B") return extents.A;
-      return extents.B;
+    function rangeStart(layerId, extents, current = page()) {
+      if (layerId === PENDING_LAYER_ID) return null;
+      const order = activeLayerOrder(current);
+      const index = order.indexOf(layerId);
+      if (index <= 0) return null;
+      return extents[order[index - 1]];
     }
 
-    function visibleLayerSegments(layers, extents, depth) {
+    function visibleLayerSegments(current, depth) {
+      ensurePageShape(current);
       const segments = [];
       let top = 0;
-
-      for (const layer of LAYERS) {
-        if (!layers[layer]?.active) continue;
-        const bottom = extents[layer];
+      for (const layerId of activeLayerOrder(current)) {
+        const bottom = current.extents[layerId];
         const clippedTop = clamp(top, 0, depth);
         const clippedBottom = clamp(bottom, 0, depth);
         const thickness = clippedBottom - clippedTop;
         if (bottom > top && thickness > 0) {
-          segments.push({ layer, thickness, color: layers[layer] });
+          segments.push({ layer: layerId, label: horizonLabelForLayer(current, layerId), thickness, color: current.layers[layerId] });
         }
         top = bottom;
       }
       return segments;
     }
 
-    function visibleTransitionHandles(layers, extents, depth) {
+    function visibleTransitionHandles(current, depth) {
+      ensurePageShape(current);
       const handles = [];
-      if (layers.A?.active && layers.B?.active && extents.A <= depth) {
-        handles.push({ key: "AB", layer: "A", cm: extents.A });
-      }
-      if (layers.B?.active && layers.C?.active && extents.B <= depth) {
-        handles.push({ key: "BC", layer: "B", cm: extents.B });
-      }
-      return handles;
-    }
-
-    function ensurePageShape(p) {
-      if (!p.artifacts || typeof p.artifacts !== "object") {
-        p.artifacts = {};
-      }
-      for (const layer of LAYERS) {
-        const a = p.artifacts[layer];
-        if (!a || typeof a !== "object") {
-          // Coerce legacy string value or missing entry to new shape
-          const legacyType = typeof a === "string" ? a : "";
-          // Map old emoji keys to vocabulary strings
-          const LEGACY_EMOJI_MAP = {
-            "🪨": "Lithic", "🏺": "Ceramic", "🦴": "Bone",
-            "🔩": "Metal",  "🐚": "Shell",   "❓": "Unknown"
-          };
-          const resolvedType = LEGACY_EMOJI_MAP[legacyType] || (ARTIFACT_TYPES.includes(legacyType) ? legacyType : "");
-          p.artifacts[layer] = { type: resolvedType, note: "" };
-        } else {
-          if (!ARTIFACT_TYPES.includes(a.type)) a.type = "";
-          if (typeof a.note !== "string") a.note = "";
+      const order = activeLayerOrder(current);
+      for (let i = 0; i < order.length - 1; i++) {
+        const layer = order[i];
+        const nextLayer = order[i + 1];
+        const cm = Number(current.extents?.[layer]);
+        if (Number.isFinite(cm) && cm <= depth) {
+          const from = horizonLabelForLayer(current, layer);
+          const to = horizonLabelForLayer(current, nextLayer);
+          handles.push({ key: `${layer}_${nextLayer}`, label: `${from}${to}`, layer, cm });
         }
       }
-      return p;
+      return handles;
     }
 
     function page() {
@@ -3436,47 +3631,116 @@
       render();
     }
 
-    function updateColor(layer, patch) {
+    function seedExtentForLayer(p, layerId) {
+      ensurePageShape(p);
+      const order = activeLayerOrder(p);
+      const index = order.indexOf(layerId);
+      const previous = order[index - 1];
+      const base = previous ? Number(p.extents[previous]) || 0 : 0;
+      const existing = Number(p.extents[layerId]);
+      if (!Number.isFinite(existing) || existing <= base) p.extents[layerId] = base + 10;
+    }
+
+    function updateColor(layerId, patch) {
       setPage((p) => {
+        ensurePageShape(p);
+        if (layerId === PENDING_LAYER_ID) {
+          if (patch.horizon) pendingHorizonLayer = normalizeHorizonLabel(patch.horizon);
+          return p;
+        }
         const clean = { ...patch };
-        const wasInactiveC = layer === "C" && !p.layers.C?.active;
-        const isActivatingC = wasInactiveC && clean.active === true;
         if (clean.hueFamilyDraft !== undefined) {
           clean.hueFamily = clean.hueFamilyDraft;
           delete clean.hueFamilyDraft;
         }
-        p.layers[layer] = { ...p.layers[layer], ...clean };
-        if (isActivatingC) {
-          p.extents.C = (Number(p.extents.B) || 0) + 5;
-        }
+        if (clean.horizon !== undefined) clean.horizon = normalizeHorizonLabel(clean.horizon);
+        delete clean.active;
+        p.layers[layerId] = { ...p.layers[layerId], ...clean, active: true };
         return p;
       });
     }
 
-    function updateLayerExtent(layer, cm) {
-      setPage((p) => {
-        p.extents[layer] = cm;
-        return p;
-      });
-    }
-
-    function cycleArtifact(layer) {
+    function addPendingHorizonLayer() {
       setPage((p) => {
         ensurePageShape(p);
-        const current = p.artifacts[layer].type || "";
+        const horizon = normalizePendingHorizonLayer(p);
+        const id = nextLayerId(p);
+        const previous = p.layerOrder[p.layerOrder.length - 1];
+        const base = previous ? Number(p.extents[previous]) || 0 : 0;
+        p.layerOrder.push(id);
+        p.layers[id] = { ...newLayerDefaults(horizon), horizon, active: true };
+        const newBottom = base + 10;
+        p.extents[id] = newBottom;
+        p.artifacts[id] = { type: "", note: "" };
+        renderDepth = Math.max(renderDepth, newBottom + 10);
+        pendingHorizonLayer = nextPendingHorizonAfterAdd(horizon, p);
+        return p;
+      });
+    }
+
+    function removeActiveHorizonLayer(layerId) {
+      setPage((p) => {
+        ensurePageShape(p);
+        if (p.layerOrder.length <= 1 || !p.layerOrder.includes(layerId)) return p;
+        const removed = p.layers[layerId]?.horizon || pendingHorizonLayer;
+        p.layerOrder = p.layerOrder.filter((id) => id !== layerId);
+        delete p.layers[layerId];
+        delete p.extents[layerId];
+        delete p.artifacts[layerId];
+        pendingHorizonLayer = normalizeHorizonLabel(removed);
+        return p;
+      });
+    }
+
+    function cyclePendingHorizonLayer() {
+      const current = page();
+      const order = horizonCycleOrderFor(current, PENDING_LAYER_ID);
+      const currentLayer = normalizePendingHorizonLayer(current);
+      const idx = order.indexOf(currentLayer);
+      pendingHorizonLayer = order[(idx < 0 ? 0 : idx + 1) % order.length] || "C";
+      render();
+    }
+
+    function cycleActiveHorizonLayer(layerId) {
+      setPage((p) => {
+        ensurePageShape(p);
+        if (!p.layerOrder.includes(layerId)) return p;
+        const current = normalizeHorizonLabel(p.layers[layerId]?.horizon);
+        const order = horizonCycleOrderFor(p, layerId);
+        const idx = order.indexOf(current);
+        const next = order[(idx < 0 ? 0 : idx + 1) % order.length] || current;
+        const oldValues = p.layers[layerId] || {};
+        p.layers[layerId] = { ...layerDefaults(next), ...oldValues, horizon: next, active: true };
+        return p;
+      });
+    }
+
+    function updateLayerExtent(layerId, cm) {
+      setPage((p) => {
+        ensurePageShape(p);
+        if (p.layerOrder.includes(layerId)) p.extents[layerId] = cm;
+        return p;
+      });
+    }
+
+    function cycleArtifact(layerId) {
+      setPage((p) => {
+        ensurePageShape(p);
+        if (!p.artifacts[layerId]) p.artifacts[layerId] = { type: "", note: "" };
+        const current = p.artifacts[layerId].type || "";
         const idx = ARTIFACT_TYPES.indexOf(current);
         const nextType = ARTIFACT_TYPES[(idx < 0 ? 0 : idx + 1) % ARTIFACT_TYPES.length];
-        p.artifacts[layer] = { type: nextType, note: "" };
+        p.artifacts[layerId] = { type: nextType, note: "" };
         revealArtifactLabels();
         return p;
       });
     }
 
-    function clearArtifact(layer) {
-      if (!page().artifacts?.[layer]?.type) return;
+    function clearArtifact(layerId) {
+      if (!page().artifacts?.[layerId]?.type) return;
       setPage((p) => {
         ensurePageShape(p);
-        p.artifacts[layer] = { type: "", note: "" };
+        p.artifacts[layerId] = { type: "", note: "" };
         return p;
       });
     }
@@ -3502,7 +3766,8 @@
       }
 
       const newPage = { ...clone(current), id: newId };
-      newPage.artifacts = { A: { type: "", note: "" }, B: { type: "", note: "" }, C: { type: "", note: "" } };
+      ensurePageShape(newPage);
+      newPage.artifacts = { A: { type: "", note: "" }, E: { type: "", note: "" }, B: { type: "", note: "" }, C: { type: "", note: "" } };
       let newPages  = [...pages.slice(0, insertAt), newPage, ...pages.slice(insertAt)];
 
       if (renumberTail) {
@@ -3564,14 +3829,15 @@
     }
 
     function clampDraggedTransition(layer, cm) {
-      const extents = page().extents;
-      if (layer === "A" && page().layers.B?.active) {
-        return clamp(cm, 0, Math.max(0, extents.B - 1));
-      }
-      if (layer === "B" && page().layers.C?.active) {
-        return clamp(cm, (extents.A || 0) + 1, Math.max((extents.A || 0) + 1, extents.C - 1));
-      }
-      return cm;
+      const current = page();
+      const order = activeLayerOrder(current);
+      const index = order.indexOf(layer);
+      if (index < 0) return cm;
+      const previous = order[index - 1];
+      const next = order[index + 1];
+      const min = previous ? (Number(current.extents[previous]) || 0) + 1 : 0;
+      const max = next ? Math.max(min, (Number(current.extents[next]) || min + 1) - 1) : Math.max(min, renderDepth);
+      return clamp(cm, min, max);
     }
 
     function beginRailDrag(event, handle) {
@@ -3615,36 +3881,39 @@
         rail.innerHTML = "";
         rail.appendChild(_railTrack);
       }
-      for (const [key, layer] of [["AB", "A"], ["BC", "B"]]) {
-        if (!_railDots[key]) {
-          const dot = document.createElement("div");
-          dot.className = "handle";
-          dot.setAttribute("role", "slider");
-          dot.setAttribute("aria-label", `${key} transition depth`);
-          dot.addEventListener("mousedown", (e) => beginRailDrag(e, { layer, key }));
-          dot.addEventListener("touchstart", (e) => beginRailDrag(e, { layer, key }), { passive: false });
-          _railTrack.appendChild(dot);
-          _railDots[key] = dot;
-        }
-      }
     }
 
     function renderRail(current) {
       ensureRailDOM();
-      const handles = visibleTransitionHandles(current.layers, current.extents, renderDepth);
+      const handles = visibleTransitionHandles(current, renderDepth);
       const visibleKeys = new Set(handles.map((h) => h.key));
 
-      for (const [key, dot] of Object.entries(_railDots)) {
-        if (visibleKeys.has(key)) {
-          const handle = handles.find((h) => h.key === key);
-          const pct = cmToPct(handle.cm, renderDepth);
-          dot.style.top = `calc(${pct}% - 12px)`;
-          dot.style.display = "";
-          dot.classList.toggle("dragging", railDrag?.layer === handle.layer);
-        } else {
-          dot.style.display = "none";
+      for (const key of Object.keys(_railDots)) {
+        if (!visibleKeys.has(key)) {
+          _railDots[key].remove();
+          delete _railDots[key];
         }
       }
+
+      handles.forEach((handle) => {
+        let dot = _railDots[handle.key];
+        if (!dot) {
+          dot = document.createElement("div");
+          dot.className = "handle";
+          dot.setAttribute("role", "slider");
+          dot.addEventListener("mousedown", (e) => beginRailDrag(e, { layer: handle.layer, key: handle.key }));
+          dot.addEventListener("touchstart", (e) => beginRailDrag(e, { layer: handle.layer, key: handle.key }), { passive: false });
+          _railTrack.appendChild(dot);
+          _railDots[handle.key] = dot;
+        }
+        const pct = cmToPct(handle.cm, renderDepth);
+        dot.layer = handle.layer;
+        dot.key = handle.key;
+        dot.setAttribute("aria-label", `${handle.label} transition depth`);
+        dot.style.top = `calc(${pct}% - 12px)`;
+        dot.style.display = "";
+        dot.classList.toggle("dragging", railDrag?.layer === handle.layer);
+      });
     }
 
     function clearTransitionOverlays() {
@@ -3686,17 +3955,21 @@
         const pct = cmToPct(centerCm, renderDepth);
         const nextSegment = segments[index + 1];
         const labelLift = nextSegment ? Math.max(0, TRANSITION_RENDER.gaugePx / 2 - TRANSITION_RENDER.yOffsetPx) : 0;
-        const labelTopPx = Math.max(LABEL_RENDER.minTopPx, (pct / 100) * overlayHeight - labelLift);
+        const labelBaseTopPx = Math.max(LABEL_RENDER.minTopPx, (pct / 100) * overlayHeight - labelLift);
+        const labelText = segment.label || color.horizon || layer;
+        const labelTopPx = index === 0 && labelText === "A"
+          ? Math.max(2, labelBaseTopPx - LABEL_RENDER.firstALabelLiftPx)
+          : labelBaseTopPx;
 
         const label = document.createElement("div");
         label.className = "layer-label";
-        label.textContent = layer;
+        label.textContent = labelText;
         label.style.top = `${labelTopPx}px`;
 
         const tag = document.createElement("div");
         tag.className = "munsell-tag";
         tag.textContent = colorLabel(color);
-        tag.style.top = `${labelTopPx}px`;
+        tag.style.top = `${labelBaseTopPx}px`;
 
         overlay.appendChild(label);
         overlay.appendChild(tag);
@@ -3723,7 +3996,7 @@
         const dot = document.createElement("div");
         dot.className = "artifact-marker";
         dot.textContent = icon;
-        dot.title = `${layer}: ${artifactType}`;
+        dot.title = `${segment.label || current.layers?.[layer]?.horizon || layer}: ${artifactType}`;
         dot.style.top = `${cmToPct(centerCm, renderDepth)}%`;
         dot.style.left = `${50 + (index - 1) * 7}%`;
         dot.style.pointerEvents = "auto";
@@ -3814,14 +4087,25 @@
       });
     }
 
+
+    function updateProfileRenderHeight(current) {
+      const pit = document.querySelector(".pit");
+      if (!pit) return;
+      const layerCount = activeLayerOrder(current).length;
+      const expansionSteps = Math.max(0, Math.ceil((layerCount - 3) / 3));
+      const height = Math.round(240 * (1 + expansionSteps * 0.3));
+      pit.style.height = `${height}px`;
+    }
+
     function renderProfile(current) {
+      ensurePageShape(current);
+      updateProfileRenderHeight(current);
       renderRail(current);
       clearTransitionOverlays();
       const stack = $("PitProfile");
       const labels = $("labelsOverlay");
       const artifacts = $("artifactOverlay");
-      const segments = visibleLayerSegments(current.layers, current.extents, renderDepth);
-      ensurePageShape(current);
+      const segments = visibleLayerSegments(current, renderDepth);
       stack.innerHTML = "";
       labels.innerHTML = "";
       artifacts.innerHTML = "";
@@ -3845,7 +4129,7 @@
         div.style.backgroundColor = soil;
         appendTextureOverlays(div, color.soilType);
 
-        if (layer === "A") {
+        if ((color.horizon || layer) === "A") {
           div.innerHTML += `
             <div class="root" style="left:24px;height:32px"></div>
             <div class="root" style="left:48px;height:24px"></div>
@@ -3901,21 +4185,36 @@
       `;
     }
 
+    function renderRowActions(current, layer) {
+      const isPending = isPendingLayerRow(current, layer);
+      const isRemovable = isRemovableLayer(current, layer);
+      return `
+        <div class="row-actions">
+          ${isPending ? `<button class="row-action-btn" data-action="add-pending-layer" data-layer="${layer}" aria-label="Add horizon">+</button>` : ""}
+          ${isRemovable ? `<button class="row-action-btn" data-action="remove-layer" data-layer="${layer}" aria-label="Remove horizon">−</button>` : ""}
+        </div>
+      `;
+    }
+
     function renderRows(current) {
+      ensurePageShape(current);
       const rows = $("rows");
-      rows.innerHTML = LAYERS.map((layer) => {
-        const color = current.layers[layer];
-        const active = color.active;
-        const start = rangeStart(layer, current.extents);
+      const rowOrder = rowLayerOrder(current);
+      rows.innerHTML = rowOrder.map((layer) => {
+        const isPending = isPendingLayerRow(current, layer);
+        const horizon = horizonLabelForLayer(current, layer);
+        const color = isPending ? { ...newLayerDefaults(horizon), active: false } : current.layers[layer];
+        const active = !isPending;
+        const artifact = active ? current.artifacts?.[layer] : null;
+        const start = rangeStart(layer, current.extents, current);
         const prefix = start === null ? "" : `${start}-`;
-        const invalid = !isDepthOrderValid(layer, current.extents);
-
+        const invalid = !isDepthOrderValid(layer, current.extents, current);
         const hueFamilyInput = `<input value="${color.hueFamily}" data-family-input="${layer}" />`;
-
         return `
           <div class="row ${active ? "" : "off"}">
             <div class="row-grid">
-              <button class="layer-toggle ${current.artifacts?.[layer]?.type ? "has-artifact" : ""}" data-action="toggle" data-layer="${layer}" data-artifact="${ARTIFACT_ICONS[current.artifacts?.[layer]?.type] || ""}">${layer}</button>
+              <button class="layer-toggle ${artifact?.type ? "has-artifact" : ""}" data-action="${isPending ? "cycle-pending-layer" : "cycle-active-layer"}" data-layer="${layer}" data-artifact="${ARTIFACT_ICONS[artifact?.type] || ""}" aria-label="Cycle horizon letter">${horizon}</button>
+              ${active ? `<button class="row-action-btn artifact-cycle-btn" data-action="cycle-artifact" data-layer="${layer}" aria-label="Cycle artifact">↺</button>` : `<div class="artifact-cycle-placeholder" aria-hidden="true"></div>`}
               ${renderStepper(color.hueFamily === "GLEY" ? "—" : color.hueNumber, { action: "step", layer, field: "hueNumberUp" }, { action: "step", layer, field: "hueNumberDown" })}
               ${renderStepper(color.hueFamily, { action: "step", layer, field: "familyUp" }, { action: "step", layer, field: "familyDown" }, hueFamilyInput)}
               ${renderStepper(color.value, { action: "step", layer, field: "valueUp" }, { action: "step", layer, field: "valueDown" })}
@@ -3925,71 +4224,58 @@
               ${active ? `
                 <div class="cm-wrap">
                   <span class="range-prefix">${prefix}</span>
-                  ${cmInputHTML(current.extents[layer], invalid, true)}
-                </div>
-              ` : layer === "C" ? `
-                <div class="cm-wrap" aria-label="inactive C depth range">
-                  <span class="range-prefix">x-</span>
-                  <span class="cm-input compact" data-inactive-c-placeholder="1" style="display:inline-flex;align-items:center;justify-content:center;color:var(--stone-500);"></span>
+                  ${cmInputHTML(current.extents[layer], invalid, true).replace('data-cm-input="1"', `data-cm-input="1" data-layer="${layer}"`)}
                 </div>
               ` : `
-                <div class="empty-cell"></div>
+                <div class="cm-wrap" aria-label="pending ${horizon} depth range">
+                  <span class="range-prefix"></span>
+                  <span class="cm-input compact" data-inactive-placeholder="${horizon}" style="display:inline-flex;align-items:center;justify-content:center;color:var(--stone-500);"></span>
+                </div>
               `}
-              ${layer === "C" ? `<button class="clear-btn" data-action="clear-c">−</button>` : `<div></div>`}
+              ${renderRowActions(current, layer)}
             </div>
           </div>
         `;
       }).join("");
-
-      rows.querySelectorAll("[data-cm-input]").forEach((input, index) => {
-        const layer = LAYERS[index];
+      rows.querySelectorAll("[data-cm-input]").forEach((input) => {
+        const layer = input.dataset.layer;
         bindCmInput(input, current.extents[layer], (cm) => updateLayerExtent(layer, cm));
       });
-
       rows.querySelectorAll("[data-family-input]").forEach((input) => {
         input.addEventListener("focus", () => input.select());
-        input.addEventListener("input", (e) => {
-          updateColor(input.dataset.familyInput, { hueFamilyDraft: e.target.value.toUpperCase(), active: true });
-        });
+        input.addEventListener("input", (e) => updateColor(input.dataset.familyInput, { hueFamilyDraft: e.target.value.toUpperCase(), active: true }));
         input.addEventListener("blur", (e) => {
           const normalized = normalizeHueFamily(e.target.value);
           if (normalized) updateColor(input.dataset.familyInput, { hueFamily: normalized, active: true });
           else render();
         });
-        input.addEventListener("keydown", (e) => {
-          if (e.key === "Enter") input.blur();
-        });
+        input.addEventListener("keydown", (e) => { if (e.key === "Enter") input.blur(); });
       });
-
       rows.querySelectorAll("[data-action]").forEach((el) => {
         el.addEventListener("dblclick", (event) => {
-          if (el.dataset.action === "toggle") {
+          if (el.dataset.action === "cycle-artifact") {
             event.preventDefault();
             clearArtifact(el.dataset.layer);
           }
         });
-
         el.addEventListener("click", () => {
           const action = el.dataset.action;
           const layer = el.dataset.layer;
           const field = el.dataset.field;
-          if (action === "toggle") {
-            if (page().layers[layer].active) cycleArtifact(layer);
-            else updateColor(layer, { active: true });
+          if (action === "cycle-artifact") {
+            if (layer !== PENDING_LAYER_ID) cycleArtifact(layer);
           }
-          if (action === "clear-c") {
-            setPage((p) => {
-              p.layers.C.active = false;
-              ensurePageShape(p);
-              p.artifacts.C = { type: "", note: "" };
-              return p;
-            });
-          }
+          if (action === "cycle-pending-layer") cyclePendingHorizonLayer();
+          if (action === "cycle-active-layer") cycleActiveHorizonLayer(layer);
+          if (action === "add-pending-layer") addPendingHorizonLayer();
+          if (action === "remove-layer") removeActiveHorizonLayer(layer);
           if (action === "type-step") {
+            if (layer === PENDING_LAYER_ID) return;
             const currentType = page().layers[layer].soilType || "Type";
             updateColor(layer, { soilType: nextFrom(SOIL_TYPES, currentType, field === "typeDown" ? 1 : -1), active: true });
           }
           if (action === "step") {
+            if (layer === PENDING_LAYER_ID) return;
             const currentColor = page().layers[layer];
             if (field === "hueNumberUp") updateColor(layer, { hueNumber: nextFrom(HUE_NUMBERS, currentColor.hueNumber, 1), active: true });
             if (field === "hueNumberDown") updateColor(layer, { hueNumber: nextFrom(HUE_NUMBERS, currentColor.hueNumber, -1), active: true });
@@ -4352,13 +4638,13 @@
     function starterPageTemplate() {
       return ensurePageShape({
         id: 1,
+        layerOrder: ["L1", "L2"],
         layers: {
-          A: { hueNumber: 10, hueFamily: "YR", value: 4, chroma: 2, active: true, soilType: "Type" },
-          B: { hueNumber: 7.5, hueFamily: "YR", value: 5, chroma: 4, active: true, soilType: "Type" },
-          C: { hueNumber: 10, hueFamily: "YR", value: 6, chroma: 4, active: false, soilType: "Type" }
+          L1: { horizon: "A", hueNumber: 10, hueFamily: "YR", value: 2, chroma: 2, active: true, soilType: "Type" },
+          L2: { horizon: "B", hueNumber: 10, hueFamily: "YR", value: 3, chroma: 2, active: true, soilType: "Type" }
         },
-        extents: { A: 9, B: 26, C: 35 },
-        artifacts: { A: { type: "", note: "" }, B: { type: "", note: "" }, C: { type: "", note: "" } }
+        extents: { L1: 9, L2: 26 },
+        artifacts: { L1: { type: "", note: "" }, L2: { type: "", note: "" } }
       });
     }
 
@@ -4802,24 +5088,30 @@
 
     function buildStpDiffRows(local, remote) {
       const rows = [];
-      for (const layer of LAYERS) {
-        const l = local.layers?.[layer];
-        const r = remote.layers?.[layer];
-        if (!l || !r) continue;
-        const lStr = l.active ? `${l.hueNumber}${l.hueFamily} ${l.value}/${l.chroma}` : "off";
-        const rStr = r.active ? `${r.hueNumber}${r.hueFamily} ${r.value}/${r.chroma}` : "off";
-        if (lStr !== rStr) rows.push({ field: `Layer ${layer}`, mine: lStr, theirs: rStr });
-        const fmtArtifact = (a) => {
-          if (!a || !a.type) return "—";
-          return a.note ? `${a.type} — ${a.note}` : a.type;
-        };
-        const lA = fmtArtifact(local.artifacts?.[layer]);
-        const rA = fmtArtifact(remote.artifacts?.[layer]);
-        if (lA !== rA) rows.push({ field: `${layer} artifact`, mine: lA, theirs: rA });
+      const localPage = ensurePageShape(clone(local));
+      const remotePage = ensurePageShape(clone(remote));
+      const maxRows = Math.max(localPage.layerOrder.length, remotePage.layerOrder.length);
+      const fmtArtifact = (a) => {
+        if (!a || !a.type) return "—";
+        return a.note ? `${a.type} — ${a.note}` : a.type;
+      };
+      for (let i = 0; i < maxRows; i++) {
+        const lId = localPage.layerOrder[i];
+        const rId = remotePage.layerOrder[i];
+        const l = lId ? localPage.layers?.[lId] : null;
+        const r = rId ? remotePage.layers?.[rId] : null;
+        const lLabel = l ? normalizeHorizonLabel(l.horizon) : "—";
+        const rLabel = r ? normalizeHorizonLabel(r.horizon) : "—";
+        const lStr = l ? `${lLabel} ${l.hueNumber}${l.hueFamily} ${l.value}/${l.chroma}` : "missing";
+        const rStr = r ? `${rLabel} ${r.hueNumber}${r.hueFamily} ${r.value}/${r.chroma}` : "missing";
+        if (lStr !== rStr) rows.push({ field: `Layer ${i + 1}`, mine: lStr, theirs: rStr });
+        const lA = fmtArtifact(lId ? localPage.artifacts?.[lId] : null);
+        const rA = fmtArtifact(rId ? remotePage.artifacts?.[rId] : null);
+        if (lA !== rA) rows.push({ field: `Layer ${i + 1} artifact`, mine: lA, theirs: rA });
       }
-      if (!pageFieldsEqual(local.extents, remote.extents)) {
-        const fmt = e => LAYERS.filter(l => e?.[l] != null).map(l => `${l}:${e[l]}cm`).join(" ");
-        const lE = fmt(local.extents), rE = fmt(remote.extents);
+      if (!pageFieldsEqual(localPage.extents, remotePage.extents)) {
+        const fmt = (pg) => pg.layerOrder.map((id, i) => `${i + 1}:${horizonLabelForLayer(pg, id)}:${pg.extents[id]}cm`).join(" ");
+        const lE = fmt(localPage), rE = fmt(remotePage);
         if (lE !== rE) rows.push({ field: "Extents", mine: lE, theirs: rE });
       }
       return rows;
