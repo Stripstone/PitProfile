@@ -4142,6 +4142,10 @@
       }
       clearActiveTeamSession();
       hideTeamJoinPanel();
+      // Rehydrate working state from the (now cleared or kept) store
+      // so the canvas reflects the new local state immediately.
+      alignWorkingStateToSyncedStore();
+      render();
       showStatus(keepLocalData ? "Left team. Local data kept." : "Left team. Local data cleared.");
     }
 
@@ -4406,8 +4410,19 @@
       return map;
     }
 
+    function canonicalizePage(p) {
+      // Normalise field order so JSON.stringify comparisons are stable
+      // across server round-trips (Postgres JSON does not preserve key order).
+      const shaped = ensurePageShape(clone(p));
+      const sortedKeys = (obj) => {
+        if (!obj || typeof obj !== "object" || Array.isArray(obj)) return obj;
+        return Object.fromEntries(Object.keys(obj).sort().map(k => [k, sortedKeys(obj[k])]));
+      };
+      return JSON.stringify(sortedKeys(shaped));
+    }
+
     function pageFieldsEqual(a, b) {
-      return JSON.stringify(a) === JSON.stringify(b);
+      return canonicalizePage(a) === canonicalizePage(b);
     }
 
     function remoteRowSortValue(row) {
