@@ -4582,6 +4582,7 @@
       return new Promise(resolve => {
         function dismiss(choice) {
           actsEl.onclick = null;
+          modal.removeEventListener("click", onBackdrop);
           document.removeEventListener("keydown", onKey);
           window.removeEventListener("popstate", onPopState);
           modal.hidden = true;
@@ -4594,14 +4595,20 @@
           dismiss(btn.dataset.choice);
         };
 
-        // Escape key — treat as skip so the sync can complete
+        // Click on backdrop (not card) — abort sync
+        function onBackdrop(e) {
+          if (e.target === modal) dismiss("abort");
+        }
+        modal.addEventListener("click", onBackdrop);
+
+        // Escape key — abort sync and close modal
         function onKey(e) {
-          if (e.key === "Escape") dismiss("skip");
+          if (e.key === "Escape") dismiss("abort");
         }
         document.addEventListener("keydown", onKey);
 
-        // Android back button (popstate) — treat as skip
-        function onPopState() { dismiss("skip"); }
+        // Android back button (popstate) — abort sync
+        function onPopState() { dismiss("abort"); }
         window.addEventListener("popstate", onPopState, { once: true });
       });
     }
@@ -4636,6 +4643,9 @@
         ]
       });
 
+      syncDiag("transect conflict resolved", { transect: conflict.transectName, choice });
+      if (choice === "abort") return "abort";
+
       if (choice === "theirs") {
         const remotePayload = transectPayload(conflict.transectName, conflict.remoteSnapshot);
         remotePayload.pageIndex = 0;
@@ -4655,13 +4665,30 @@
         // Walk each STP conflict one at a time
         for (let j = 0; j < conflict.stpConflicts.length; j++) {
           const stp = conflict.stpConflicts[j];
-          await resolveStpConflict(conflict.transectName, stp, j, conflict.stpConflicts.length);
+          const stpResult = await resolveStpConflict(conflict.transectName, stp, j, conflict.stpConflicts.length);
+          if (stpResult === "abort") return "abort";
         }
 
-        // Canonicalise all pages after merge so that skipped STPs
-        // have normalised field shape. Combined with canonicalizePage,
-        // this ensures the verify pass sees pushed == pulled for skipped STPs.
+        // For skipped STPs: local store keeps local value,
+        // but push payload must use remote value so server is unchanged.
+        // We temporarily swap skipped STPs to remote in the store for the push,
+        // then restore local values afterward.
+        const skippedRestores = [];
+        for (const stp of conflict.stpConflicts) {
+          if (stp._skipped) {
+            const pageIndex = snap.pages.findIndex(p => p.id === stp.pageId);
+            if (pageIndex !== -1) {
+              skippedRestores.push({ pageIndex, localPage: clone(snap.pages[pageIndex]) });
+              snap.pages[pageIndex] = clone(stp.remote);
+            }
+          }
+        }
+
         snap.pages = snap.pages.map(ensurePageShape);
+
+        // skippedRestores is used by pushResolvedState to restore local
+        // values after the push completes. Stash on the conflict object.
+        conflict._skippedRestores = skippedRestores;
 
       } else if (choice === "keep") {
         // Local stays untouched
@@ -4686,11 +4713,41 @@
         ]
       });
 
+      if (choice === "abort") {
+        syncDiag("STP conflict aborted", { transect: transectName, stpId: stp.pageId });
+        return "abort";
+      }
+
       if (choice === "theirs") {
+        // Use Theirs: replace local STP with remote, push remote
         const snap = transectStore[transectName];
         if (snap) snap.pages = snap.pages.map(p => p.id === stp.pageId ? stp.remote : p);
+        syncDiag("STP resolved: use theirs", {
+          transect: transectName, stpId: stp.pageId,
+          pushedValue: "remote", extents: stp.remote.extents
+        });
+      } else if (choice === "skip") {
+        // Skip: server gets remote value (local not pushed for this STP),
+        // local keeps local value. Conflict reappears next sync.
+        // Achieved by writing remote into the push payload only:
+        // store is NOT updated here, but we swap for the push by writing
+        // remote into store temporarily then restoring after push.
+        // Simpler approach: mark this page as skipped so pushLocalToTeam
+        // uses remote value for this STP in the payload.
+        // Implementation: stash remote on the stp object for the merge path to use.
+        stp._skipped = true;
+        syncDiag("STP skipped: remote preserved on server, local retained", {
+          transect: transectName, stpId: stp.pageId,
+          serverValue: "remote", localValue: "kept",
+          remoteExtents: stp.remote.extents, localExtents: stp.local.extents
+        });
+      } else {
+        // Keep Mine: local STP pushed as authoritative
+        syncDiag("STP resolved: keep mine", {
+          transect: transectName, stpId: stp.pageId,
+          pushedValue: "local", extents: stp.local.extents
+        });
       }
-      // "keep" / "skip" → local stays, pushed as authoritative
     }
 
     function buildStpDiffRows(local, remote) {
@@ -4727,6 +4784,8 @@
         ]
       });
 
+      if (choice === "abort") return "abort";
+
       if (choice === "theirs") {
         const deletedName = conflict.transectName;
         delete transectStore[deletedName];
@@ -4757,9 +4816,26 @@
         const c = conflicts[i];
         if (c.type === "remote-delete") {
           const kept = await resolveRemoteDeleteConflict(c, i, conflicts.length);
+          if (kept === "abort") { $("conflictModal").hidden = true; return "abort"; }
           if (kept) resolvedKeepSet.add(c.transectName);
         } else if (c.type === "transect-conflict") {
-          await resolveTransectConflict(c, i, conflicts.length);
+          const result = await resolveTransectConflict(c, i, conflicts.length);
+          if (result === "abort") { $("conflictModal").hidden = true; return "abort"; }
+        }
+      }
+      // After push, restore local values for skipped STPs
+      for (const c of conflicts) {
+        if (c._skippedRestores && c._skippedRestores.length) {
+          const snap = transectStore[c.transectName];
+          if (snap) {
+            for (const { pageIndex, localPage } of c._skippedRestores) {
+              snap.pages[pageIndex] = localPage;
+            }
+          }
+          syncDiag("skipped STPs restored to local after push", {
+            transect: c.transectName,
+            count: c._skippedRestores.length
+          });
         }
       }
       $("conflictModal").hidden = true;
@@ -4792,6 +4868,7 @@
       // Flush any unsaved working state into the store before diffing or pushing.
       // Without this, edits made since the last explicit save are invisible to the
       // sync engine and get overwritten by the remote version after settlement.
+      syncDiag("pre-flush state", { dirty: dirtyTransect, activeTransectName, storeHasActive: !!transectStore[activeTransectName] });
       if (dirtyTransect && activeTransectName) {
         transectStore[activeTransectName] = snapshotTransect();
         dirtyTransect = false;
@@ -4875,7 +4952,15 @@
         let resolvedKeepSet = new Set();
         if (conflicts.length) {
           syncDiag("showing conflict queue", { count: conflicts.length });
-          resolvedKeepSet = await runConflictQueue(conflicts, async () => {}) || new Set();
+          const queueResult = await runConflictQueue(conflicts, async () => {});
+          if (queueResult === "abort") {
+            syncDiag("sync aborted by user");
+            if (window.__ppDiag) window.__ppDiag.syncFail("aborted by user");
+            showStatus("Sync cancelled.");
+            render();
+            return;
+          }
+          resolvedKeepSet = queueResult || new Set();
           await pushResolvedState("conflict-resolution");
         } else {
           await pushResolvedState(autoMerge.length ? "auto-merge" : "initial");
