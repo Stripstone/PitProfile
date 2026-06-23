@@ -4325,7 +4325,7 @@
     }
 
 
-    async function pushLocalToTeam(teamKey) {
+    async function pushLocalToTeam(teamKey, pushOverrides = {}) {
       const pendingDeletes = deletedTransectSet();
       const deletedNames = [];
 
@@ -4348,7 +4348,10 @@
       }
 
       for (const name of names) {
-        const payload = transectPayload(name, transectStore[name]);
+        const sourceSnapshot = pushOverrides[name]
+          ? { ...transectStore[name], pages: pushOverrides[name] }
+          : transectStore[name];
+        const payload = transectPayload(name, sourceSnapshot);
         const { error } = await PitProfileBackend.rpc("stp_v2_upsert_transect", {
           p_team_key: teamKey,
           p_author_name: activeTeam.member,
@@ -4669,26 +4672,18 @@
           if (stpResult === "abort") return "abort";
         }
 
-        // For skipped STPs: local store keeps local value,
-        // but push payload must use remote value so server is unchanged.
-        // We temporarily swap skipped STPs to remote in the store for the push,
-        // then restore local values afterward.
-        const skippedRestores = [];
-        for (const stp of conflict.stpConflicts) {
-          if (stp._skipped) {
-            const pageIndex = snap.pages.findIndex(p => p.id === stp.pageId);
-            if (pageIndex !== -1) {
-              skippedRestores.push({ pageIndex, localPage: clone(snap.pages[pageIndex]) });
-              snap.pages[pageIndex] = clone(stp.remote);
-            }
-          }
-        }
-
         snap.pages = snap.pages.map(ensurePageShape);
 
-        // skippedRestores is used by pushResolvedState to restore local
-        // values after the push completes. Stash on the conflict object.
-        conflict._skippedRestores = skippedRestores;
+        // Collect skipped STPs: store keeps local value, but push needs remote.
+        // We pass an override page list to pushResolvedState so the push payload
+        // uses remote for skipped STPs without touching the store.
+        const hasSkipped = conflict.stpConflicts.some(s => s._skipped);
+        if (hasSkipped) {
+          conflict._pushPagesOverride = snap.pages.map(p => {
+            const skippedStp = conflict.stpConflicts.find(s => s._skipped && s.pageId === p.id);
+            return skippedStp ? clone(skippedStp.remote) : p;
+          }).map(ensurePageShape);
+        }
 
       } else if (choice === "keep") {
         // Local stays untouched
@@ -4823,18 +4818,14 @@
           if (result === "abort") { $("conflictModal").hidden = true; return "abort"; }
         }
       }
-      // After push, restore local values for skipped STPs
+      // Build push overrides for transects with skipped STPs
+      const pushOverrides = {};
       for (const c of conflicts) {
-        if (c._skippedRestores && c._skippedRestores.length) {
-          const snap = transectStore[c.transectName];
-          if (snap) {
-            for (const { pageIndex, localPage } of c._skippedRestores) {
-              snap.pages[pageIndex] = localPage;
-            }
-          }
-          syncDiag("skipped STPs restored to local after push", {
+        if (c._pushPagesOverride) {
+          pushOverrides[c.transectName] = c._pushPagesOverride;
+          syncDiag("push override built for skipped STPs", {
             transect: c.transectName,
-            count: c._skippedRestores.length
+            pages: c._pushPagesOverride.length
           });
         }
       }
@@ -4842,7 +4833,7 @@
       if (typeof onComplete === "function") {
         return await onComplete();
       }
-      return resolvedKeepSet;
+      return { resolvedKeepSet, pushOverrides };
     }
 
     // ── Main sync entry point ────────────────────────────────────────
@@ -4898,11 +4889,11 @@
           return { rows, ...diff };
         }
 
-        async function pushResolvedState(stage) {
+        async function pushResolvedState(stage, pushOverrides = {}) {
           alignWorkingStateToSyncedStore();
           saveLocalWorkingState();
           refreshTransectDropdown();
-          const pushed = await pushLocalToTeam(teamKey);
+          const pushed = await pushLocalToTeam(teamKey, pushOverrides);
           for (const name of pushed.deletedNames || []) syncSessionDeletedNames.add(name);
           syncDiag(`${stage} push complete`, pushed);
           return pushed;
@@ -4960,8 +4951,9 @@
             render();
             return;
           }
-          resolvedKeepSet = queueResult || new Set();
-          await pushResolvedState("conflict-resolution");
+          resolvedKeepSet = queueResult?.resolvedKeepSet || new Set();
+          const pushOverrides = queueResult?.pushOverrides || {};
+          await pushResolvedState("conflict-resolution", pushOverrides);
         } else {
           await pushResolvedState(autoMerge.length ? "auto-merge" : "initial");
         }
@@ -5040,6 +5032,7 @@
       pageIndex = resetToFirstPage ? 0 : clamp(Number(snapshot.pageIndex) || 0, 0, pages.length - 1);
       renderDepth = Math.max(1, Number(snapshot.renderDepth) || DEFAULT_RENDER_DEPTH_CM);
       activeTransectName = contextLabel;
+      if (dirtyTransect) syncDiag("dirty cleared: applyTransectSnapshot");
       dirtyTransect = false;
       revealArtifactLabels();
       pendingAction = null;
@@ -5056,6 +5049,7 @@
         pageIndex = clamp(Number(snapshot.pageIndex) || 0, 0, pages.length - 1);
         renderDepth = Math.max(1, Number(snapshot.renderDepth) || DEFAULT_RENDER_DEPTH_CM);
         activeTransectName = contextLabel;
+        if (dirtyTransect) syncDiag("dirty cleared: alignWorkingStateToSyncedStore branch 1");
         dirtyTransect = false;
         return;
       }
@@ -5070,6 +5064,7 @@
         pageIndex = clamp(Number(snapshot.pageIndex) || 0, 0, pages.length - 1);
         renderDepth = Math.max(1, Number(snapshot.renderDepth) || DEFAULT_RENDER_DEPTH_CM);
         activeTransectName = contextLabel;
+        if (dirtyTransect) syncDiag("dirty cleared: alignWorkingStateToSyncedStore branch 2");
         dirtyTransect = false;
         return;
       }
