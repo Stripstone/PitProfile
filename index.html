@@ -2638,7 +2638,7 @@
           <span id="teamNameDisplay"></span>
           <button id="leaveTeam" type="button" aria-label="Leave team">×</button>
         </div>
-        <button class="transect-action" id="syncTeam" type="button">Join Team</button>
+        <button class="transect-action" id="syncTeam" type="button">Sync</button>
       </div>
 
       <!-- Add Transect modal -->
@@ -4095,17 +4095,14 @@
     function updateTeamDisplay() {
       const pill = $("teamPill");
       const label = $("teamNameDisplay");
-      const syncBtn = $("syncTeam");
       if (!pill || !label) return;
 
       if (activeTeam?.name) {
         label.textContent = activeTeam.name;
         pill.hidden = false;
-        if (syncBtn && !teamAuthPending) syncBtn.textContent = "Sync";
       } else {
         label.textContent = "";
         pill.hidden = true;
-        if (syncBtn && !teamAuthPending) syncBtn.textContent = "Join Team";
       }
     }
 
@@ -4689,11 +4686,14 @@
         ]
       });
 
-      if (choice === "theirs") {
+      if (choice === "theirs" || choice === "skip") {
+        // Use theirs: explicit remote preference.
+        // Skip: user deferred, server version preserved to avoid pushing
+        // local data that would overwrite teammates unexpectedly.
         const snap = transectStore[transectName];
         if (snap) snap.pages = snap.pages.map(p => p.id === stp.pageId ? stp.remote : p);
       }
-      // "keep" / "skip" → local stays
+      // "keep" → local stays, pushed as authoritative
     }
 
     function buildStpDiffRows(local, remote) {
