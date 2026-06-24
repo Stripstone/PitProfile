@@ -1837,6 +1837,83 @@
     background: rgba(255, 255, 255, 0.68);
   }
 
+
+  .team-modal-copy {
+    color: var(--stone-600);
+    font-size: 12px;
+    font-weight: 800;
+    line-height: 1.35;
+    padding: 0 2px;
+  }
+  .team-modal-detail-list {
+    display: grid;
+    gap: 6px;
+    margin: 4px 0 2px;
+    padding: 10px;
+    border-radius: 12px;
+    background: var(--stone-100);
+  }
+  .team-modal-detail-row {
+    display: grid;
+    grid-template-columns: 70px 1fr;
+    gap: 8px;
+    align-items: baseline;
+    font-size: 12px;
+    line-height: 1.25;
+  }
+  .team-modal-detail-label {
+    color: var(--stone-500);
+    font-weight: 900;
+  }
+  .team-modal-detail-value {
+    color: var(--stone-900);
+    font-weight: 900;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .team-modal-actions.stack {
+    grid-template-columns: 1fr;
+  }
+  .team-modal-actions.three {
+    grid-template-columns: 1fr 1fr;
+  }
+  .team-modal-actions.three .team-join-btn:first-child {
+    grid-column: 1 / -1;
+  }
+  .team-danger-link {
+    border: 0;
+    background: transparent;
+    color: var(--amber-900);
+    font-size: 12px;
+    line-height: 1;
+    font-weight: 900;
+    text-align: left;
+    padding: 8px 2px 2px;
+    cursor: pointer;
+  }
+  .team-modal-divider {
+    height: 1px;
+    background: var(--stone-200);
+    margin: 2px 0;
+  }
+  .team-confirm-name {
+    border: 0;
+    border-radius: 12px;
+    background: var(--stone-100);
+    color: var(--stone-900);
+    padding: 10px;
+    font-size: 13px;
+    line-height: 1;
+    font-weight: 900;
+    box-shadow: inset 0 0 0 1px var(--stone-200);
+    outline: none;
+    min-width: 0;
+  }
+  .team-join-btn.danger {
+    background: var(--amber-200);
+    color: var(--amber-900);
+  }
+
   /* Active Team Floating Indicators */
   .team-under-render {
     position: absolute;
@@ -3452,6 +3529,64 @@
       </div>
 
 
+      <div class="team-modal" id="createTeamConfirmModal" hidden>
+        <div class="team-modal-card" role="dialog" aria-modal="true" aria-labelledby="createTeamConfirmTitle">
+          <div class="team-modal-title" id="createTeamConfirmTitle">Create Team?</div>
+          <div class="team-modal-detail-list">
+            <div class="team-modal-detail-row"><span class="team-modal-detail-label">Team</span><span class="team-modal-detail-value" id="createTeamConfirmName"></span></div>
+            <div class="team-modal-detail-row"><span class="team-modal-detail-label">Code</span><span class="team-modal-detail-value" id="createTeamConfirmCode"></span></div>
+            <div class="team-modal-detail-row"><span class="team-modal-detail-label">Member</span><span class="team-modal-detail-value" id="createTeamConfirmMember"></span></div>
+          </div>
+          <div class="team-modal-actions">
+            <button id="cancelCreateTeam" class="team-join-btn muted" type="button">Cancel</button>
+            <button id="confirmCreateTeam" class="team-join-btn" type="button">Create Team</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="team-modal" id="leaveTeamModal" hidden>
+        <div class="team-modal-card" role="dialog" aria-modal="true" aria-labelledby="leaveTeamModalTitle">
+          <div class="team-modal-title" id="leaveTeamModalTitle">Leave Team?</div>
+          <div class="team-modal-copy">This team will be removed from your device.</div>
+          <div class="team-modal-copy">Keep a local copy?</div>
+          <div class="team-modal-actions three">
+            <button id="cancelLeaveTeamModal" class="team-join-btn muted" type="button">Cancel</button>
+            <button id="keepCopyLeaveTeam" class="team-join-btn" type="button">Keep Copy</button>
+            <button id="leaveClearTeam" class="team-join-btn" type="button">Leave &amp; Clear</button>
+          </div>
+          <div class="team-modal-divider" aria-hidden="true"></div>
+          <button id="openDeleteTeamFlow" class="team-danger-link" type="button">Delete team...</button>
+        </div>
+      </div>
+
+      <div class="team-modal" id="deleteTeamInfoModal" hidden>
+        <div class="team-modal-card" role="dialog" aria-modal="true" aria-labelledby="deleteTeamInfoTitle">
+          <div class="team-modal-title" id="deleteTeamInfoTitle">Delete Team?</div>
+          <div class="team-modal-copy">This closes the shared team workspace and removes it from normal joining.</div>
+          <div class="team-modal-copy">Team data may be recoverable for 90 days. Shoot us a message if you want it restored.</div>
+          <div class="team-modal-actions">
+            <button id="cancelDeleteTeamInfo" class="team-join-btn muted" type="button">Cancel</button>
+            <button id="continueDeleteTeam" class="team-join-btn danger" type="button">Continue</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="team-modal" id="deleteTeamConfirmModal" hidden>
+        <div class="team-modal-card" role="dialog" aria-modal="true" aria-labelledby="deleteTeamConfirmTitle">
+          <div class="team-modal-title" id="deleteTeamConfirmTitle">Confirm Delete</div>
+          <div class="team-modal-copy">Type the team name to delete this team:</div>
+          <div class="team-modal-detail-list">
+            <div class="team-modal-detail-value" id="deleteTeamConfirmName"></div>
+          </div>
+          <input id="deleteTeamNameInput" class="team-confirm-name" autocomplete="off" spellcheck="false" />
+          <div class="team-modal-actions">
+            <button id="cancelDeleteTeamConfirm" class="team-join-btn muted" type="button">Cancel</button>
+            <button id="confirmDeleteTeam" class="team-join-btn danger" type="button" disabled>Delete Team</button>
+          </div>
+        </div>
+      </div>
+
+
       <div class="confirm" id="confirmBox" hidden><!-- preserved for legacy compat; rendering handled by toastBar --></div>
 
       <section class="profile">
@@ -3607,6 +3742,7 @@
     let pendingImportPayload = null;
     let activeTeam = null;
     let teamAuthPending = false;
+    let pendingTeamJoin = null;
     let deletedSeries = {};
     const SUPABASE_URL = "https://xkqkulfiwqhmjxcitpst.supabase.co";
     const SUPABASE_KEY = "sb_publishable_nxd1vedbE3lpfEOFjWHShQ_lnXCf7xp";
@@ -3729,8 +3865,12 @@
           team_code: normalizeSimName(code, "SIM"),
           members: {},
           series: {},
+          archive_reason: null,
+          archived_at: null,
+          purge_after: null,
           created_at: simNow(),
-          updated_at: simNow()
+          updated_at: simNow(),
+          last_seen_at: simNow()
         };
       }
       return db.teams[key];
@@ -3750,7 +3890,9 @@
     function ensureSimMember(team, memberName) {
       const name = normalizeSimName(memberName, "Sim Member");
       const id = `member_${stableSimHash(name.toLowerCase())}`;
-      team.members[id] = team.members[id] || { id, name, created_at: simNow() };
+      team.members[id] = team.members[id] || { id, name, created_at: simNow(), last_seen_at: simNow(), left_at: null };
+      team.members[id].last_seen_at = simNow();
+      team.members[id].left_at = null;
       return team.members[id];
     }
 
@@ -3843,29 +3985,72 @@
             return { data: simTeamKey(params.p_team_name, params.p_team_code), error: null };
           }
 
+          if (name === "profile_v2_check_team") {
+            const key = simTeamKey(params.p_team_name, params.p_team_code);
+            const existingByName = findSimTeamByName(db, params.p_team_name);
+            if (!existingByName) return { data: { ok: true, status: "not_found", simulated: true }, error: null };
+            if (existingByName.key !== key) {
+              return { data: { ok: false, status: "code_mismatch", error: "TEAM_CODE_MISMATCH", message: "Team name already exists with a different code.", simulated: true }, error: null };
+            }
+            if (existingByName.archive_reason === "user_deleted") {
+              return { data: { ok: false, status: "team_deleted", error: "TEAM_DELETED", message: "This team was deleted. Shoot us a message if you want it restored.", simulated: true }, error: null };
+            }
+            return { data: { ok: true, status: "can_join", team_name: existingByName.team_name, team_key: existingByName.key, simulated: true }, error: null };
+          }
+
           if (name === "profile_v2_create_or_join_team") {
             const key = simTeamKey(params.p_team_name, params.p_team_code);
             const existingByName = findSimTeamByName(db, params.p_team_name);
             if (existingByName && existingByName.key !== key) {
-              return {
-                data: {
-                  ok: false,
-                  code: "TEAM_CODE_MISMATCH",
-                  team_name: existingByName.team_name,
-                  simulated: true
-                },
-                error: null
-              };
+              return { data: { ok: false, error: "TEAM_CODE_MISMATCH", message: "Team name already exists with a different code.", team_name: existingByName.team_name, simulated: true }, error: null };
+            }
+            if (existingByName?.archive_reason === "user_deleted") {
+              return { data: { ok: false, error: "TEAM_DELETED", message: "This team was deleted. Shoot us a message if you want it restored.", simulated: true }, error: null };
             }
             const created = !db.teams[key];
             const team = ensureSimTeam(db, params.p_team_name, params.p_team_code);
+            if (team.archive_reason === "abandoned") {
+              team.archive_reason = null;
+              team.archived_at = null;
+              team.purge_after = null;
+            }
+            team.last_seen_at = simNow();
+            ensureSimMember(team, params.p_member_name || params.p_author_name || "Sim Member");
             writeSimDb(db);
-            return { data: { ok: true, created, team_name: team.team_name, team_key: key, simulated: true }, error: null };
+            return { data: { ok: true, created, team_name: team.team_name, team_key: key, member_name: params.p_member_name || "", simulated: true }, error: null };
+          }
+
+          if (name === "profile_v2_leave_team") {
+            const team = findSimTeamByKey(db, params.p_team_key);
+            if (!team) return { data: null, error: { message: "Sim team not found", code: "SIM_TEAM_NOT_FOUND" } };
+            const member = ensureSimMember(team, params.p_member_name || "Sim Member");
+            member.left_at = simNow();
+            member.last_seen_at = simNow();
+            const activeMembers = Object.values(team.members || {}).filter(m => !m.left_at).length;
+            if (activeMembers === 0 && team.archive_reason !== "user_deleted") {
+              team.archive_reason = "abandoned";
+              team.archived_at = simNow();
+              team.purge_after = simNow();
+            }
+            writeSimDb(db);
+            return { data: { ok: true, active_members: activeMembers, archived: activeMembers === 0, simulated: true }, error: null };
+          }
+
+          if (name === "profile_v2_delete_team") {
+            const team = findSimTeamByKey(db, params.p_team_key);
+            if (!team) return { data: null, error: { message: "Sim team not found", code: "SIM_TEAM_NOT_FOUND" } };
+            team.archive_reason = "user_deleted";
+            team.archived_at = simNow();
+            team.purge_after = simNow();
+            Object.values(team.members || {}).forEach(m => { m.left_at = m.left_at || simNow(); m.last_seen_at = simNow(); });
+            writeSimDb(db);
+            return { data: { ok: true, deleted: true, message: "Team deleted.", simulated: true }, error: null };
           }
 
           if (name === "profile_v2_upsert_series") {
             const team = findSimTeamByKey(db, params.p_team_key);
             if (!team) return { data: null, error: { message: "Sim team not found", code: "SIM_TEAM_NOT_FOUND" } };
+            if (team.archive_reason === "user_deleted") return { data: null, error: { message: "TEAM_DELETED", code: "TEAM_DELETED" } };
             const row = upsertSimSeries(team, params.p_author_name, params.p_series_name, params.p_data);
             writeSimDb(db);
             return { data: simRowForPull(row), error: null };
@@ -3874,6 +4059,7 @@
           if (name === "profile_v2_delete_series") {
             const team = findSimTeamByKey(db, params.p_team_key);
             if (!team) return { data: null, error: { message: "Sim team not found", code: "SIM_TEAM_NOT_FOUND" } };
+            if (team.archive_reason === "user_deleted") return { data: null, error: { message: "TEAM_DELETED", code: "TEAM_DELETED" } };
             const row = deleteSimSeries(team, params.p_author_name, params.p_series_name);
             writeSimDb(db);
             return { data: simRowForPull(row), error: null };
@@ -3882,6 +4068,7 @@
           if (name === "profile_v2_pull_series") {
             const team = findSimTeamByKey(db, params.p_team_key);
             if (!team) return { data: [], error: null };
+            if (team.archive_reason === "user_deleted") return { data: null, error: { message: "TEAM_DELETED", code: "TEAM_DELETED" } };
             const rows = Object.values(team.series || {}).map(simRowForPull);
             const duplicates = (db.settings.duplicateRows || []).filter(r => !r.team_key || r.team_key === team.key).map(r => simRowForPull(r));
             if (db.settings.stalePullOnce) {
@@ -5233,13 +5420,136 @@
       return String(a || "").trim().toLowerCase() === String(b || "").trim().toLowerCase();
     }
 
+
+    function normalizeTeamField(value) {
+      return String(value || "").trim();
+    }
+
+    function teamDeletedMessage() {
+      return "This team was deleted. Shoot us a message if you want it restored.";
+    }
+
+    function isTeamDeletedError(errorOrData) {
+      const text = String(errorOrData?.message || errorOrData?.error || errorOrData?.code || "").toUpperCase();
+      return text.includes("TEAM_DELETED");
+    }
+
+    function showOnboardingToast(text) {
+      document.body.classList.add('onboarding-toast-active');
+      if (window.__obToastTimer) clearTimeout(window.__obToastTimer);
+      showStatus(text);
+      window.__obToastTimer = setTimeout(() => {
+        document.body.classList.remove('onboarding-toast-active');
+      }, 3000);
+    }
+
+    function validateTeamFields(name, code, member, focusTargets = {}) {
+      if (String(name || "").trim().length < 3) {
+        showStatus("Team name must be at least 3 characters.");
+        focusTargets.name?.focus?.();
+        return false;
+      }
+      if (!String(code || "").trim()) {
+        showStatus("Enter a team code.");
+        focusTargets.code?.focus?.();
+        return false;
+      }
+      if (String(member || "").trim().length < 2) {
+        showStatus("Member name must be at least 2 characters.");
+        focusTargets.member?.focus?.();
+        return false;
+      }
+      return true;
+    }
+
+    function validateOnboardingTeamFields(name, code, member, focusTargets = {}) {
+      if (String(name || "").trim().length < 3) {
+        showOnboardingToast("Team name must be at least 3 characters.");
+        focusTargets.name?.focus?.();
+        return false;
+      }
+      if (!String(code || "").trim()) {
+        showOnboardingToast("Enter a team code.");
+        focusTargets.code?.focus?.();
+        return false;
+      }
+      if (String(member || "").trim().length < 2) {
+        showOnboardingToast("Member name must be at least 2 characters.");
+        focusTargets.member?.focus?.();
+        return false;
+      }
+      return true;
+    }
+
+    function hideTeamModal(id) {
+      const modal = $(id);
+      if (modal) modal.hidden = true;
+    }
+
+    function openCreateTeamConfirm(details) {
+      pendingTeamJoin = details ? { ...details } : null;
+      if (!pendingTeamJoin) return;
+      const modal = $("createTeamConfirmModal");
+      if (!modal) return;
+      $("createTeamConfirmName").textContent = pendingTeamJoin.name;
+      $("createTeamConfirmCode").textContent = pendingTeamJoin.code;
+      $("createTeamConfirmMember").textContent = pendingTeamJoin.member;
+      modal.hidden = false;
+      setTimeout(() => $("confirmCreateTeam")?.focus(), 0);
+    }
+
+    function closeCreateTeamConfirm() {
+      pendingTeamJoin = null;
+      hideTeamModal("createTeamConfirmModal");
+    }
+
+    function openLeaveTeamModal() {
+      const modal = $("leaveTeamModal");
+      if (!modal) return;
+      modal.hidden = false;
+      setTimeout(() => $("leaveClearTeam")?.focus(), 0);
+    }
+
+    function closeLeaveTeamModal() {
+      hideTeamModal("leaveTeamModal");
+    }
+
+    function openDeleteTeamInfoModal() {
+      closeLeaveTeamModal();
+      const modal = $("deleteTeamInfoModal");
+      if (!modal) return;
+      modal.hidden = false;
+      setTimeout(() => $("continueDeleteTeam")?.focus(), 0);
+    }
+
+    function closeDeleteTeamInfoModal() {
+      hideTeamModal("deleteTeamInfoModal");
+    }
+
+    function openDeleteTeamConfirmModal() {
+      closeDeleteTeamInfoModal();
+      const modal = $("deleteTeamConfirmModal");
+      const input = $("deleteTeamNameInput");
+      const confirmButton = $("confirmDeleteTeam");
+      if (!modal || !input || !confirmButton || !activeTeam?.name) return;
+      $("deleteTeamConfirmName").textContent = activeTeam.name;
+      input.value = "";
+      confirmButton.disabled = true;
+      modal.hidden = false;
+      setTimeout(() => input.focus(), 0);
+    }
+
+    function closeDeleteTeamConfirmModal() {
+      hideTeamModal("deleteTeamConfirmModal");
+    }
+
     function clearActiveTeamSession() {
       activeTeam = null;
       saveLocalWorkingState();
       updateTeamDisplay();
     }
 
-    function clearActiveTeam(keepLocalData = false) {
+    function clearActiveTeam(keepLocalData = false, statusText = null) {
       if (!keepLocalData) {
         seriesStore = {};
         try { localStorage.removeItem("munsell-profile-deleted-series-v2"); } catch {}
@@ -5247,16 +5557,39 @@
       }
       clearActiveTeamSession();
       hideTeamJoinPanel();
+      closeLeaveTeamModal();
+      closeDeleteTeamInfoModal();
+      closeDeleteTeamConfirmModal();
       // Rehydrate working state from the (now cleared or kept) store
       // so the canvas reflects the new local state immediately.
       alignWorkingStateToSyncedStore();
       render();
-      showStatus(keepLocalData ? "Left team. Local data kept." : "Left team. Local data cleared.");
+      showStatus(statusText || (keepLocalData ? "Left team. Local copy kept." : "Left team. Local data cleared."));
+    }
+
+    async function notifyBackendTeamLeave(team, keepLocalData) {
+      if (!team?.name || !team?.code || !team?.member) return;
+      try {
+        const teamKey = await teamKeyFor(team.name, team.code);
+        await PitProfileBackend.rpc("profile_v2_leave_team", {
+          p_team_key: teamKey,
+          p_member_name: team.member
+        });
+      } catch (error) {
+        console.warn("Leave-team backend update failed", error);
+      }
+    }
+
+    async function leaveTeamFromModal(keepLocalData = false) {
+      const team = activeTeam ? { ...activeTeam } : null;
+      closeLeaveTeamModal();
+      if (team) await notifyBackendTeamLeave(team, keepLocalData);
+      clearActiveTeam(keepLocalData, keepLocalData ? "Left team. Local copy kept." : "Left team.");
     }
 
     function requestLeaveTeam() {
       if (!activeTeam?.name) return;
-      setPending("leave-team", `Leave ${activeTeam.name}? Your local series will be cleared. Keep a copy?`);
+      openLeaveTeamModal();
     }
 
     function showTeamJoinPanel() {
@@ -5281,18 +5614,75 @@
       return false;
     }
 
+    async function performTeamJoin(details, options = {}) {
+      const { teamWasCreated = false } = options || {};
+      if (!details) return;
+      const { name, code, member } = details;
+      const previousTeam = activeTeam ? { ...activeTeam } : null;
+
+      setTeamAuthPending(true);
+      try {
+        syncDiag("transport: create/join requested", { teamName: name, member, hadActiveTeam: Boolean(previousTeam?.name), confirmedCreate: Boolean(teamWasCreated) });
+        const { data, error } = await PitProfileBackend.rpc("profile_v2_create_or_join_team", {
+          p_team_name: name,
+          p_team_code: code,
+          p_member_name: member
+        });
+
+        if (error) {
+          syncDiag("transport: create/join RPC error", { message: error.message, details: error.details, hint: error.hint, code: error.code });
+          console.error("Create/join team RPC error:", JSON.stringify(error));
+          showStatus(isTeamDeletedError(error) ? teamDeletedMessage() : (error.message || "Team sync error."));
+          return;
+        }
+
+        if (!data?.ok) {
+          syncDiag("transport: create/join rejected", { ...data, attemptedTeam: name, previousTeam: previousTeam?.name || "" });
+          if (isTeamDeletedError(data)) {
+            showStatus(teamDeletedMessage());
+          } else if (previousTeam?.name && sameTeamName(previousTeam.name, name)) {
+            clearActiveTeamSession();
+            showStatus("Team name/code mismatch.");
+          } else if (previousTeam?.name) {
+            showStatus(`Could not join ${name}. Still using ${previousTeam.name}.`);
+          } else {
+            showStatus(data?.message || "Team name/code mismatch.");
+          }
+          return;
+        }
+
+        syncDiag(data.created ? "lifecycle: team created" : "lifecycle: team joined", { teamName: data.team_name || name });
+
+        activeTeam = {
+          name: data.team_name || name,
+          code,
+          member: data.member_name || member
+        };
+        saveLocalWorkingState();
+        updateTeamDisplay();
+        hideTeamJoinPanel();
+        closeCreateTeamConfirm();
+        await syncTeamConfirmed({ teamWasCreated: Boolean(data.created || teamWasCreated) });
+      } catch (error) {
+        console.error("Create/join team failed:", JSON.stringify(error));
+        showStatus(isTeamDeletedError(error) ? teamDeletedMessage() : (error?.message || "Team failed."));
+      } finally {
+        setTeamAuthPending(false);
+      }
+    }
+
     async function joinTeamFromPanel() {
       if (teamAuthPending) return;
 
-      const name = String($("teamNameInput").value || "").trim().toLowerCase();
-      const code = String($("teamCodeInput").value || "").trim().toLowerCase();
-      const member = String($("memberNameInput").value || "").trim();
-      const previousTeam = activeTeam ? { ...activeTeam } : null;
+      const name = normalizeTeamField($("teamNameInput").value).toLowerCase();
+      const code = normalizeTeamField($("teamCodeInput").value).toLowerCase();
+      const member = normalizeTeamField($("memberNameInput").value);
 
-      if (!name || !code || !member) {
-        showStatus("Fill team fields.");
-        return;
-      }
+      if (!validateTeamFields(name, code, member, {
+        name: $("teamNameInput"),
+        code: $("teamCodeInput"),
+        member: $("memberNameInput")
+      })) return;
 
       if (navigator.onLine === false) {
         showStatus("No connection. Check your network and try again.");
@@ -5300,49 +5690,40 @@
       }
 
       setTeamAuthPending(true);
-      showStatus("Verifying team…");
+      showStatus("Checking team…");
 
       try {
-        syncDiag("transport: create/join requested", { teamName: name, member, hadActiveTeam: Boolean(previousTeam?.name) });
-        const { data, error } = await PitProfileBackend.rpc("profile_v2_create_or_join_team", {
+        const { data, error } = await PitProfileBackend.rpc("profile_v2_check_team", {
           p_team_name: name,
           p_team_code: code
         });
 
         if (error) {
-          syncDiag("transport: create/join RPC error", { message: error.message, details: error.details, hint: error.hint, code: error.code });
-          console.error("Create/join team RPC error:", JSON.stringify(error));
-          showStatus(error.message || "Team sync error.");
+          console.error("Check team RPC error:", JSON.stringify(error));
+          showStatus(isTeamDeletedError(error) ? teamDeletedMessage() : (error.message || "Team check failed."));
           return;
         }
 
-        if (!data?.ok) {
-          syncDiag("transport: create/join rejected", { ...data, attemptedTeam: name, previousTeam: previousTeam?.name || "" });
-          if (previousTeam?.name && sameTeamName(previousTeam.name, name)) {
-            clearActiveTeamSession();
-            showStatus("Team name/code mismatch.");
-          } else if (previousTeam?.name) {
-            showStatus(`Could not join ${name}. Still using ${previousTeam.name}.`);
-          } else {
-            showStatus("Team name/code mismatch.");
-          }
+        if (data?.status === "not_found") {
+          setTeamAuthPending(false);
+          openCreateTeamConfirm({ name, code, member });
           return;
         }
-        syncDiag(data.created ? "lifecycle: team created" : "lifecycle: team joined", { teamName: data.team_name || name });
 
-        activeTeam = {
-          name: data.team_name || name,
-          code,
-          member
-        };
-        saveLocalWorkingState();
-        updateTeamDisplay();
-        hideTeamJoinPanel();
-        setTeamAuthPending(false);
-        await syncTeamConfirmed({ teamWasCreated: Boolean(data.created) });
+        if (data?.status === "team_deleted" || isTeamDeletedError(data)) {
+          showStatus(teamDeletedMessage());
+          return;
+        }
+
+        if (data?.status === "code_mismatch" || data?.ok === false) {
+          showStatus(data?.message || "Team name/code mismatch.");
+          return;
+        }
+
+        await performTeamJoin({ name, code, member }, { teamWasCreated: false });
       } catch (error) {
-        console.error("Create/join team failed:", JSON.stringify(error));
-        showStatus(error?.message || "Team failed.");
+        console.error("Check team failed:", JSON.stringify(error));
+        showStatus(isTeamDeletedError(error) ? teamDeletedMessage() : (error?.message || "Team check failed."));
       } finally {
         setTeamAuthPending(false);
       }
@@ -6075,7 +6456,7 @@
           code: error?.code
         });
         if (window.__ppDiag) window.__ppDiag.syncFail(error?.message || "unknown");
-        showStatus("Couldn't sync.");
+        showStatus(isTeamDeletedError(error) ? teamDeletedMessage() : "Couldn't sync.");
       }
     }
 
@@ -6246,8 +6627,12 @@
 
     function confirmAddSeries() {
       const suffix = ($("addSeriesSuffix")?.value || "").trim();
-      if (!suffix) { $("addSeriesSuffix")?.focus(); return; }
       const newName = "S-" + suffix;
+      if (!suffix || newName.length < 3) {
+        showStatus("Series name must be at least 3 characters.");
+        $("addSeriesSuffix")?.focus();
+        return;
+      }
       closeAddSeriesModal();
 
       // 1. Lock in the current series as-is before moving on
@@ -7124,9 +7509,66 @@
 
     $("cancelJoinTeam").addEventListener("click", hideTeamJoinPanel);
 
+    $("cancelCreateTeam").addEventListener("click", closeCreateTeamConfirm);
+    $("confirmCreateTeam").addEventListener("click", async () => {
+      const details = pendingTeamJoin ? { ...pendingTeamJoin } : null;
+      if (!details) return;
+      closeCreateTeamConfirm();
+      await performTeamJoin(details, { teamWasCreated: true });
+    });
+
+    $("cancelLeaveTeamModal").addEventListener("click", closeLeaveTeamModal);
+    $("keepCopyLeaveTeam").addEventListener("click", () => leaveTeamFromModal(true));
+    $("leaveClearTeam").addEventListener("click", () => leaveTeamFromModal(false));
+    $("openDeleteTeamFlow").addEventListener("click", openDeleteTeamInfoModal);
+
+    $("cancelDeleteTeamInfo").addEventListener("click", () => {
+      closeDeleteTeamInfoModal();
+      openLeaveTeamModal();
+    });
+    $("continueDeleteTeam").addEventListener("click", openDeleteTeamConfirmModal);
+    $("cancelDeleteTeamConfirm").addEventListener("click", () => {
+      closeDeleteTeamConfirmModal();
+      openDeleteTeamInfoModal();
+    });
+    $("deleteTeamNameInput").addEventListener("input", () => {
+      const typed = String($("deleteTeamNameInput").value || "").trim().toLowerCase();
+      const expected = String(activeTeam?.name || "").trim().toLowerCase();
+      $("confirmDeleteTeam").disabled = !expected || typed !== expected;
+    });
+    $("confirmDeleteTeam").addEventListener("click", async () => {
+      if ($("confirmDeleteTeam").disabled || !activeTeam?.name) return;
+      const team = { ...activeTeam };
+      try {
+        const teamKey = await teamKeyFor(team.name, team.code);
+        const { data, error } = await PitProfileBackend.rpc("profile_v2_delete_team", {
+          p_team_key: teamKey,
+          p_member_name: team.member
+        });
+        if (error) {
+          showStatus(error.message || "Could not delete team.");
+          return;
+        }
+        if (data && data.ok === false) {
+          showStatus(data.message || "Could not delete team.");
+          return;
+        }
+        closeDeleteTeamConfirmModal();
+        clearActiveTeam(false, "Team deleted.");
+      } catch (error) {
+        console.error("Delete team failed:", error);
+        showStatus(error?.message || "Could not delete team.");
+      }
+    });
+
+
     document.addEventListener("keydown", (event) => {
       if (event.key === "Escape") {
         if (!$("teamJoinPanel").hidden) hideTeamJoinPanel();
+        closeCreateTeamConfirm();
+        closeLeaveTeamModal();
+        closeDeleteTeamInfoModal();
+        closeDeleteTeamConfirmModal();
         if (!$("addSeriesModal").hidden) closeAddSeriesModal();
         closeSeriesMenu();
       }
@@ -7445,16 +7887,12 @@
       if (teamCodeInput) teamCodeInput.value = code;
       if (memberNameInput) memberNameInput.value = member;
 
-      if (!name || !code || !member) {
+      if (!validateOnboardingTeamFields(name, code, member, {
+        name: nameEl,
+        code: codeEl,
+        member: memberEl
+      })) {
         if (errorEl) errorEl.textContent = '';
-        document.body.classList.add('onboarding-toast-active');
-        if (window.__obToastTimer) clearTimeout(window.__obToastTimer);
-        showStatus('Fill team fields.');
-        window.__obToastTimer = setTimeout(() => {
-          document.body.classList.remove('onboarding-toast-active');
-        }, 3000);
-        const firstMissing = !name ? nameEl : (!code ? codeEl : memberEl);
-        if (firstMissing) firstMissing.focus();
         return;
       }
 
