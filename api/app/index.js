@@ -130,6 +130,42 @@ function missingMailerFields(config) {
   return missing;
 }
 
+
+function makeRequestId() {
+  return `pit-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function mailerEnvStatus(config) {
+  return {
+    hasFromEmail: !!config.from,
+    hasToEmail: !!config.to,
+    hasSmtpServer: !!config.host,
+    hasSmtpPort: !!config.port,
+    hasSmtpLogin: !!config.user,
+    hasSmtpPassword: !!config.pass,
+  };
+}
+
+function safeErrorDetails(err) {
+  return {
+    name: err?.name || null,
+    message: clampText(err?.message || err, 1000),
+    code: err?.code || null,
+    command: err?.command || null,
+    responseCode: err?.responseCode || null,
+    response: clampText(err?.response || '', 1000) || null,
+    stack: clampText(err?.stack || '', 4000) || null,
+  };
+}
+
+function logSupportFailure(label, details) {
+  try {
+    console.error(`[PitProfile support] ${label}`, JSON.stringify(details, null, 2));
+  } catch (_) {
+    console.error(`[PitProfile support] ${label}`, details);
+  }
+}
+
 function safeJson(value, maxChars = MAX_DIAGNOSTICS_CHARS) {
   let text = '';
   try {
@@ -214,6 +250,7 @@ async function handleSupportSubmit(req, res) {
   if (withCors(req, res)) return;
   if (req.method !== 'POST') return json(res, 405, { ok: false, error: 'Method not allowed. Use POST.' });
 
+  const requestId = makeRequestId();
   const body = await readJsonBody(req);
   const type = normalizeType(body?.type);
   const message = clampText(body?.message, MAX_MESSAGE_CHARS);
@@ -225,7 +262,16 @@ async function handleSupportSubmit(req, res) {
 
   const config = readMailerConfig();
   const missing = missingMailerFields(config);
-  if (missing.length) return json(res, 503, { ok: false, error: 'Support mailer is not configured.', missing });
+  if (missing.length) {
+    logSupportFailure('mailer configuration missing', {
+      requestId,
+      missing,
+      env: mailerEnvStatus(config),
+      route: body?.context?.location?.href || body?.context?.route || req.headers.referer || 'unknown',
+      origin: req.headers.origin || null,
+    });
+    return json(res, 503, { ok: false, error: 'Support mailer is not configured.', requestId });
+  }
 
   const payload = {
     type,
@@ -242,7 +288,21 @@ async function handleSupportSubmit(req, res) {
     const sent = await sendSupportEmail(config, payload);
     return json(res, 200, { ok: true, id: sent?.messageId || null, delivered: true });
   } catch (err) {
-    return json(res, 502, { ok: false, error: 'Support message could not be sent.', detail: clampText(err?.message || err, 500) });
+    logSupportFailure('mail send failed', {
+      requestId,
+      error: safeErrorDetails(err),
+      env: mailerEnvStatus(config),
+      payload: {
+        type: payload.type,
+        path: payload.path,
+        hasContactEmail: !!payload.contactEmail,
+        messageLength: payload.message.length,
+        hasScreenshot: !!payload.screenshot,
+        route: payload.context?.location?.href || payload.context?.route || req.headers.referer || 'unknown',
+        origin: req.headers.origin || null,
+      },
+    });
+    return json(res, 502, { ok: false, error: 'Support message could not be sent.', requestId });
   }
 }
 
