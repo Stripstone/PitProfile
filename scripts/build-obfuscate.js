@@ -38,19 +38,24 @@ const SKIP_ROOT_NAMES = new Set([
 
 const obfuscatorOptions = {
   compact: true,
-  controlFlowFlattening: false,
-  deadCodeInjection: false,
+  controlFlowFlattening: true,
+  controlFlowFlatteningThreshold: 0.75,
+  deadCodeInjection: true,
+  deadCodeInjectionThreshold: 0.2,
   debugProtection: false,
   disableConsoleOutput: false,
   identifierNamesGenerator: 'hexadecimal',
   renameGlobals: false,
-  selfDefending: false,
+  selfDefending: true,
   simplify: true,
-  splitStrings: false,
+  splitStrings: true,
+  splitStringsChunkLength: 10,
   stringArray: true,
-  stringArrayEncoding: [],
-  stringArrayThreshold: 0.35,
-  transformObjectKeys: false,
+  stringArrayEncoding: ['base64'],
+  stringArrayThreshold: 0.75,
+  stringArrayRotate: true,
+  stringArrayShuffle: true,
+  transformObjectKeys: true,
   unicodeEscapeSequence: false
 };
 
