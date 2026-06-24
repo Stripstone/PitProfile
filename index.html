@@ -2282,6 +2282,7 @@
     white-space: nowrap;
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
     opacity: 1;
+    zoom: calc(1 / var(--app-container-scale, 1));
   }
 
   /* ARCHIVED -- artifactTagFade animation, kept for potential future use
@@ -3407,7 +3408,7 @@
     const CHROMAS = [1, 2, 3, 4, 6, 8];
     const DEFAULT_HORIZONS = ["A", "B", "C"];
     const HORIZON_CYCLE_ORDER = ["A", "E", "B", "C"];
-    const PENDING_HORIZON_CYCLE_ORDER = ["A", "E", "B"];
+    const PENDING_HORIZON_CYCLE_ORDER = ["A", "E", "B", "C"];
     const PENDING_LAYER_ID = "__pending_layer__";
     const E_DEFAULT_LAYER = { hueNumber: 10, hueFamily: "YR", value: 6, chroma: 2, active: true, soilType: "Loam" };
     const ARTIFACT_TYPES = ["", "Feature", "Lithic", "Ceramic", "Glass", "Bone", "Shell", "Metal", "Leather", "Textile", "Organic", "Building", "Synthetic", "Unknown"];
@@ -4274,6 +4275,7 @@
     }
 
     function addPendingHorizonLayer() {
+      _scrollToLastRowAfterRender = true;
       setPage((p) => {
         ensurePageShape(p);
         const horizon = normalizePendingHorizonLayer(p);
@@ -4611,7 +4613,10 @@
         dot.textContent = icon;
         dot.title = `${segment.label || current.layers?.[layer]?.horizon || layer}: ${artifactType}`;
         dot.style.top = `${cmToPct(centerCm, renderDepth)}%`;
-        dot.style.left = `${50 + (index - 1) * 7}%`;
+        dot.style.top = `${cmToPct(centerCm, renderDepth)}%`;
+        // Ping-pong: start centre, bounce right then left then repeat.
+        const pingpong = ["38%", "18%", "38%", "58%"];
+        dot.style.left = pingpong[index % 4];
         dot.style.pointerEvents = "auto";
         dot.style.cursor = "default";
         dot.addEventListener("click", (e) => {
@@ -4815,9 +4820,15 @@
       `;
     }
 
+    let _scrollToLastRowAfterRender = false;
+
     function renderRows(current) {
       ensurePageShape(current);
       const rows = $("rows");
+
+      const scrollEl = document.scrollingElement || document.documentElement;
+      const savedScrollY = scrollEl.scrollTop;
+
       const rowOrder = rowLayerOrder(current);
       rows.innerHTML = rowOrder.map((layer) => {
         const isPending = isPendingLayerRow(current, layer);
@@ -4907,6 +4918,14 @@
           }
         });
       });
+
+      if (_scrollToLastRowAfterRender) {
+        _scrollToLastRowAfterRender = false;
+        const lastRow = rows.lastElementChild;
+        if (lastRow) lastRow.scrollIntoView({ block: "nearest" });
+      } else {
+        scrollEl.scrollTop = savedScrollY;
+      }
     }
 
 
@@ -5081,14 +5100,17 @@
     function updateTeamDisplay() {
       const pill = $("teamPill");
       const label = $("teamNameDisplay");
+      const syncButton = $("syncTeam");
       if (!pill || !label) return;
 
       if (activeTeam?.name) {
         label.textContent = activeTeam.name;
         pill.hidden = false;
+        if (syncButton) syncButton.textContent = "Sync";
       } else {
         label.textContent = "";
         pill.hidden = true;
+        if (syncButton) syncButton.textContent = "+Team";
       }
     }
 
