@@ -7195,10 +7195,23 @@
 
       obLaunchApp(null);
 
-      setTimeout(() => {
+      // Poll until the app shell is live and the join button is accessible,
+      // then trigger join — inheriting the full sync-on-join flow.
+      const maxWait = 4000;
+      const interval = 50;
+      let elapsed = 0;
+      const pollForJoin = setInterval(() => {
+        elapsed += interval;
         const joinButton = document.getElementById('joinSyncTeam');
-        if (joinButton) joinButton.click();
-      }, 320);
+        const appLive = document.documentElement.classList.contains('pitprofile-app-view');
+        if (appLive && joinButton) {
+          clearInterval(pollForJoin);
+          joinButton.click();
+        } else if (elapsed >= maxWait) {
+          clearInterval(pollForJoin);
+          showStatus('Could not connect to team. Try joining from the app.');
+        }
+      }, interval);
     }
 
     // Policy modal: mirrors Jubly's lightweight legal/*.html modal pattern.
