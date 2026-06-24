@@ -5644,8 +5644,8 @@
         body:    parts.join(", ") + ".",
         diffRows: null,
         buttons: [
-          { choice: "keep",   label: "Keep mine",   primary: true },
-          { choice: "theirs", label: "Use theirs" },
+          { choice: "keep",   label: "Override",   primary: true },
+          { choice: "theirs", label: "Use Team's" },
           { choice: "merge",  label: "Merge" },
           { choice: "abort",  label: "Cancel" }
         ]
@@ -5695,8 +5695,8 @@
         body:    `Profile ${stp.pageId} differs from the team version.`,
         diffRows,
         buttons: [
-          { choice: "keep",   label: "Keep mine", primary: true },
-          { choice: "theirs", label: "Use theirs" },
+          { choice: "keep",   label: "Override", primary: true },
+          { choice: "theirs", label: "Use Team's" },
           { choice: "abort",  label: "Cancel" }
         ]
       });
@@ -5766,7 +5766,7 @@
         body:    `${conflict.authorName || "A teammate"} deleted this transect. You still have it locally.`,
         diffRows: null,
         buttons: [
-          { choice: "keep",   label: "Keep mine", primary: true },
+          { choice: "keep",   label: "Override", primary: true },
           { choice: "theirs", label: "Accept delete" }
         ]
       });
