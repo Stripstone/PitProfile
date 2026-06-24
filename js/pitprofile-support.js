@@ -175,7 +175,7 @@
       if (email) email.value = '';
       setTimeout(close, 900);
     } catch (_) {
-      if (status) status.textContent = 'Could not send yet. The Vercel mail environment may still need to be configured.';
+      if (status) status.textContent = 'Sorry, feedback could not be sent. Please try again in a moment.';
     } finally {
       if (sendBtn) { sendBtn.disabled = false; sendBtn.textContent = 'Send'; }
     }
