@@ -1665,9 +1665,20 @@
   .backup-option {
     display: grid;
     gap: 4px;
+    width: 100%;
     padding: 10px;
+    border: 0;
     border-radius: 12px;
     background: var(--stone-100);
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .backup-option:hover,
+  .backup-option:focus-visible {
+    background: var(--stone-200);
+    outline: none;
   }
 
   .backup-option-title {
@@ -3352,18 +3363,16 @@
         <div class="add-transect-card">
           <div class="add-transect-title" id="backupModalTitle">Backup</div>
           <div class="backup-body">
-            <div class="backup-option">
-              <div class="backup-option-title">Save Backup</div>
-              <div class="backup-option-text">Download a PitProfile backup file of your current local data.</div>
-            </div>
-            <div class="backup-option">
-              <div class="backup-option-title">Load Backup</div>
-              <div class="backup-option-text">Choose a PitProfile backup file from your device. You’ll review conflicts before anything changes.</div>
-            </div>
+            <button class="backup-option" id="saveBackup" type="button">
+              <span class="backup-option-title">Save Backup</span>
+              <span class="backup-option-text">Download a PitProfile backup file of your current local data.</span>
+            </button>
+            <button class="backup-option" id="loadBackup" type="button">
+              <span class="backup-option-title">Load Backup</span>
+              <span class="backup-option-text">Choose a PitProfile backup file from your device. You’ll review conflicts before anything changes.</span>
+            </button>
           </div>
           <div class="add-transect-actions">
-            <button class="tdd-btn tdd-btn-add" id="saveBackup" type="button">Save Backup</button>
-            <button class="tdd-btn tdd-btn-add" id="loadBackup" type="button">Load Backup</button>
             <button class="tdd-btn tdd-btn-muted" id="cancelBackup" type="button">Cancel</button>
           </div>
           <input class="backup-file-input" id="loadBackupFileInput" type="file" accept=".pitprofile,.json,application/json" />
@@ -6442,8 +6451,7 @@
     }
 
     function backupFilename() {
-      const stamp = new Date().toISOString().slice(0, 10);
-      return `pitprofile-backup-${stamp}.pitprofile`;
+      return "backup.pitprofile";
     }
 
     function backupPayload() {
@@ -6532,7 +6540,7 @@
     }
 
     async function resolveBackupSeriesConflict(name, backupSnapshot, index, total) {
-      $("conflictProgress").textContent = `${index + 1} of ${total}`;
+      $("conflictProgress").textContent = total > 1 ? `${index + 1} of ${total}` : "";
       const diffRows = [];
       const currentProfiles = Array.isArray(transectStore[name]?.pages) ? transectStore[name].pages.length : 0;
       const backupProfiles = Array.isArray(backupSnapshot?.pages) ? backupSnapshot.pages.length : 0;
@@ -6546,8 +6554,8 @@
       }
 
       const choice = await renderConflictModal({
-        title: `${name} · backup conflict`,
-        body: "This series already exists. Override replaces the current version with the backup version. Skip keeps the current version.",
+        title: "Review Backup",
+        body: `Series ${name} already exists. Override replaces the current Series with the backup version. Skip keeps the current Series.`,
         diffRows,
         buttons: [
           { choice: "override", label: "Override", primary: true },
@@ -6578,19 +6586,21 @@
       const additions = names.filter(name => !transectStore[name]);
       const identical = names.filter(name => transectStore[name] && storesMatch(transectStore[name], imported[name]));
 
-      const intro = await renderConflictModal({
-        title: "Load Backup",
-        body: `This backup contains ${names.length} Series and ${countProfilesInStore(imported)} Profiles. ${conflicts.length ? "Some data already exists." : "No conflicts found."}`,
-        diffRows: [
-          { field: "New Series", mine: "Current", theirs: String(additions.length) },
-          { field: "Conflicts", mine: "Current", theirs: String(conflicts.length) }
-        ],
-        buttons: [
-          { choice: "load", label: conflicts.length ? "Review" : "Load Backup", primary: true },
-          { choice: "abort", label: "Cancel" }
-        ]
-      });
-      if (intro === "abort") return;
+      if (!conflicts.length) {
+        $("conflictProgress").textContent = "";
+        const intro = await renderConflictModal({
+          title: "Load Backup",
+          body: `This backup contains ${names.length} Series and ${countProfilesInStore(imported)} Profiles. No conflicts found.`,
+          diffRows: [
+            { field: "New Series", mine: "Current", theirs: String(additions.length) }
+          ],
+          buttons: [
+            { choice: "load", label: "Load Backup", primary: true },
+            { choice: "abort", label: "Cancel" }
+          ]
+        });
+        if (intro === "abort") return;
+      }
 
       let added = 0;
       let overridden = 0;
