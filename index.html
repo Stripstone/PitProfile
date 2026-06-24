@@ -5732,7 +5732,7 @@
       return choice === "confirm";
     }
 
-    // Series-level: Override team with mine / Skip team unchanged / Merge / Cancel
+    // Series-level: Override team with mine / Use Team’s version / Merge / Cancel
     async function resolveSeriesConflict(conflict, index, total) {
       while (true) {
         $("conflictProgress").textContent = `${index + 1} of ${total}`;
@@ -5740,25 +5740,25 @@
         const nConflicts = conflict.profileConflicts.length;
         const nNew       = conflict.newRemotePages.length;
         const parts      = [];
-        if (nConflicts) parts.push(`${nConflicts} Profile${nConflicts > 1 ? "s" : ""} differ`);
-        if (nNew)       parts.push(`${nNew} new Profile${nNew > 1 ? "s" : ""} from team`);
+        if (nConflicts) parts.push(`Profiles differing: ${nConflicts}`);
+        if (nNew)       parts.push(`New Profiles from team: ${nNew}`);
 
-        // Warn about local-only Profiles that Skip would leave out of the team version.
+        // Warn about local-only Profiles that Use Team’s would leave out of the local version.
         const localById  = {};
         for (const p of (seriesStore[conflict.seriesName]?.pages || [])) localById[p.id] = true;
         const remoteById = {};
         for (const p of (conflict.remoteSnapshot?.pages || [])) remoteById[p.id] = true;
         const nLocalOnly = Object.keys(localById).filter(id => !remoteById[id]).length;
-        if (nLocalOnly) parts.push(`${nLocalOnly} of your Profile${nLocalOnly > 1 ? "s" : ""} not on team`);
+        if (nLocalOnly) parts.push(`Your Profiles not on team: ${nLocalOnly}`);
 
         const summary = parts.length ? `${parts.join(", ")}. ` : "";
         const choice = await renderConflictModal({
           title:   conflict.seriesName,
-          body:    `${summary}Override replaces the team’s Series with your local version. Skip keeps the team version unchanged.`,
+          body:    `${summary}Override replaces the team’s Series with your local version. Use Team’s pulls the team version into this device.`,
           diffRows: null,
           buttons: [
             { choice: "keep",   label: "Override", primary: true },
-            { choice: "theirs", label: "Skip" },
+            { choice: "theirs", label: "Use Team’s" },
             { choice: "merge",  label: "Merge" },
             { choice: "abort",  label: "Cancel" }
           ]
@@ -5811,7 +5811,7 @@
       }
     }
 
-    // Profile-level (reached only via Merge): Override team with mine / Skip team unchanged / Cancel
+    // Profile-level (reached only via Merge): Override team with mine / Use Team’s version / Cancel
     async function resolveProfileConflict(seriesName, profile, index, total) {
       $("conflictProgress").textContent = `Profile ${index + 1} of ${total}`;
 
@@ -5819,11 +5819,11 @@
 
       const choice = await renderConflictModal({
         title:   `${seriesName} · Profile ${profile.pageId}`,
-        body:    `Profile ${profile.pageId} differs from the team version. Override replaces the team’s Profile ${profile.pageId} with your local version. Skip keeps the team version unchanged.`,
+        body:    `Profile ${profile.pageId} differs from the team version. Override replaces the team’s Profile ${profile.pageId} with your local version. Use Team’s pulls the team’s Profile ${profile.pageId} into this device.`,
         diffRows,
         buttons: [
           { choice: "keep",   label: "Override", primary: true },
-          { choice: "theirs", label: "Skip" },
+          { choice: "theirs", label: "Use Team’s" },
           { choice: "abort",  label: "Cancel" }
         ]
       });
@@ -5834,7 +5834,7 @@
       }
 
       if (choice === "theirs") {
-        // Skip: replace local Profile with remote so the team version remains unchanged
+        // Use Team’s: replace local Profile with remote so the team version becomes local
         const snap = seriesStore[seriesName];
         if (snap) snap.pages = snap.pages.map(p => p.id === profile.pageId ? profile.remote : p);
         syncDiag("resolution: Profile use theirs", {
@@ -5890,11 +5890,11 @@
       $("conflictProgress").textContent = `${index + 1} of ${total}`;
       const choice = await renderConflictModal({
         title:   `${conflict.seriesName} · deleted remotely`,
-        body:    `${conflict.authorName || "A teammate"} deleted this series. You still have it locally. Override restores your local Series to the team. Skip keeps the team deletion unchanged.`,
+        body:    `${conflict.authorName || "A teammate"} deleted this series. You still have it locally. Override restores your local Series to the team. Use Team’s accepts the team deletion and removes your local copy.`,
         diffRows: null,
         buttons: [
           { choice: "keep",   label: "Override", primary: true },
-          { choice: "theirs", label: "Skip" }
+          { choice: "theirs", label: "Use Team’s" }
         ]
       });
 
