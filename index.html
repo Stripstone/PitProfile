@@ -1647,6 +1647,49 @@
     width: auto;
   }
 
+  #backupMenu {
+    min-width: 34px;
+    padding-left: 9px;
+    padding-right: 9px;
+    letter-spacing: 0.08em;
+  }
+
+  .backup-body {
+    display: grid;
+    gap: 12px;
+    font-size: 12px;
+    line-height: 1.35;
+    color: var(--stone-600);
+  }
+
+  .backup-option {
+    display: grid;
+    gap: 4px;
+    padding: 10px;
+    border-radius: 12px;
+    background: var(--stone-100);
+  }
+
+  .backup-option-title {
+    font-size: 13px;
+    font-weight: 900;
+    color: var(--stone-900);
+  }
+
+  .backup-option-text {
+    font-size: 11px;
+    font-weight: 800;
+    color: var(--stone-500);
+  }
+
+  .backup-file-input {
+    position: fixed;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+  }
+
   .transect-mini-action {
     width: 34px;
     height: 34px;
@@ -3301,6 +3344,30 @@
           <button id="leaveTeam" type="button" aria-label="Leave team">×</button>
         </div>
         <button class="transect-action" id="syncTeam" type="button">Sync</button>
+        <button class="transect-action" id="backupMenu" type="button" aria-label="Backup">...</button>
+      </div>
+
+      <!-- Backup modal -->
+      <div class="add-transect-modal" id="backupModal" hidden aria-modal="true" role="dialog" aria-labelledby="backupModalTitle">
+        <div class="add-transect-card">
+          <div class="add-transect-title" id="backupModalTitle">Backup</div>
+          <div class="backup-body">
+            <div class="backup-option">
+              <div class="backup-option-title">Save Backup</div>
+              <div class="backup-option-text">Download a PitProfile backup file of your current local data.</div>
+            </div>
+            <div class="backup-option">
+              <div class="backup-option-title">Load Backup</div>
+              <div class="backup-option-text">Choose a PitProfile backup file from your device. You’ll review conflicts before anything changes.</div>
+            </div>
+          </div>
+          <div class="add-transect-actions">
+            <button class="tdd-btn tdd-btn-add" id="saveBackup" type="button">Save Backup</button>
+            <button class="tdd-btn tdd-btn-add" id="loadBackup" type="button">Load Backup</button>
+            <button class="tdd-btn tdd-btn-muted" id="cancelBackup" type="button">Cancel</button>
+          </div>
+          <input class="backup-file-input" id="loadBackupFileInput" type="file" accept=".pitprofile,.json,application/json" />
+        </div>
       </div>
 
       <!-- Add Transect modal -->
@@ -6320,140 +6387,114 @@
     function normalizeLoadedFile(payload) {
       if (!payload || typeof payload !== "object") return null;
 
-      if (payload.transects && typeof payload.transects === "object") {
+      const source = payload.app === "PitProfile" && payload.kind === "pitprofile-backup"
+        ? (payload.data || {})
+        : payload;
+
+      if (source.transects && typeof source.transects === "object") {
         const next = {};
-        Object.entries(payload.transects).forEach(([name, value]) => {
+        Object.entries(source.transects).forEach(([name, value]) => {
           if (value && Array.isArray(value.pages) && value.pages.length) {
-            next[String(value.name || value.transect || name)] = {
-              name: String(value.name || value.transect || name),
+            const normalizedName = String(value.name || value.transect || name);
+            next[normalizedName] = {
+              name: normalizedName,
               pageIndex: Number(value.pageIndex) || 0,
               renderDepth: Number(value.renderDepth) || DEFAULT_RENDER_DEPTH_CM,
-              pages: value.pages
+              pages: value.pages.map(ensurePageShape)
             };
           }
         });
 
         return {
-          active: String(payload.activeTransectName || payload.active || Object.keys(next)[0] || ""),
-          transects: next
+          active: String(source.activeTransectName || source.active || Object.keys(next)[0] || ""),
+          transects: next,
+          exportedAt: payload.exportedAt || source.savedAt || null,
+          schemaVersion: payload.schemaVersion || source.version || 1
         };
       }
 
-      if (Array.isArray(payload.pages) && payload.pages.length) {
-        const name = String(payload.name || payload.transect || payload.contextLabel || "Imported");
+      if (Array.isArray(source.pages) && source.pages.length) {
+        const name = String(source.name || source.transect || source.contextLabel || "Imported");
         return {
           active: name,
           transects: {
             [name]: {
               name,
-              pageIndex: Number(payload.pageIndex) || 0,
-              renderDepth: Number(payload.renderDepth) || DEFAULT_RENDER_DEPTH_CM,
-              pages: payload.pages
+              pageIndex: Number(source.pageIndex) || 0,
+              renderDepth: Number(source.renderDepth) || DEFAULT_RENDER_DEPTH_CM,
+              pages: source.pages.map(ensurePageShape)
             }
-          }
+          },
+          exportedAt: payload.exportedAt || source.savedAt || null,
+          schemaVersion: payload.schemaVersion || source.version || 1
         };
       }
 
       return null;
     }
 
-
-    function applyImportedPayload(normalized, mode) {
-      if (!normalized || !normalized.transects) {
-        showStatus("Could not import this file.");
-        return;
+    function flushWorkingSeriesToStore() {
+      if (dirtyTransect && activeTransectName) {
+        transectStore[activeTransectName] = snapshotTransect();
+        dirtyTransect = false;
       }
+      ensureDefaultTransectAvailable();
+    }
 
-      const imported = normalized.transects;
-      let added = 0;
-      let skipped = 0;
+    function backupFilename() {
+      const stamp = new Date().toISOString().slice(0, 10);
+      return `pitprofile-backup-${stamp}.pitprofile`;
+    }
 
-      if (mode === "replace") {
-        transectStore = imported;
-        const names = Object.keys(transectStore).sort(naturalTransectSort);
-        const active = normalized.active && transectStore[normalized.active] ? normalized.active : names[0];
-
-        if (active) {
-          applyTransectSnapshot(active, transectStore[active], { resetToFirstPage: true });
-        } else {
-          activeTransectName = "";
-          refreshTransectDropdown();
-          render();
+    function backupPayload() {
+      flushWorkingSeriesToStore();
+      return {
+        app: "PitProfile",
+        kind: "pitprofile-backup",
+        schemaVersion: 1,
+        exportedAt: new Date().toISOString(),
+        data: {
+          app: "munsell-stp-displayer",
+          version: 1,
+          savedAt: new Date().toISOString(),
+          activeTransectName,
+          activeSeries: activeTransectName,
+          contextLabel,
+          pageIndex,
+          renderDepth,
+          transects: clone(transectStore),
+          series: Object.keys(transectStore).sort(naturalTransectSort),
+          deletedTransects: clone(deletedTransects || {})
         }
+      };
+    }
 
-        saveLocalWorkingState();
-        showStatus("Imported.");
-        return;
-      }
+    function countProfilesInStore(store) {
+      return Object.values(store || {}).reduce((sum, snap) => sum + (Array.isArray(snap?.pages) ? snap.pages.length : 0), 0);
+    }
 
-      Object.entries(imported).forEach(([name, snapshot]) => {
-        if (transectStore[name]) {
-          skipped += 1;
-          return;
-        }
-        transectStore[name] = snapshot;
-        added += 1;
-      });
+    function storesMatch(a, b) {
+      return JSON.stringify(a || null) === JSON.stringify(b || null);
+    }
 
-      const names = Object.keys(transectStore).sort(naturalTransectSort);
-      const previousActiveName = activeTransectName;
-      const active = activeTransectName && transectStore[activeTransectName]
-        ? activeTransectName
-        : names[0];
+    function downloadBackupBlob(blob, filename) {
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    }
 
-      if (active && transectStore[active]) {
-        applyTransectSnapshot(active, transectStore[active], { resetToFirstPage: active !== previousActiveName });
-      } else {
-        refreshTransectDropdown();
-        render();
-      }
-
+    async function saveBackupFile() {
+      const payload = backupPayload();
       saveLocalWorkingState();
-      if (added > 0) showStatus(`Merged ${added}. Skipped ${skipped}.`);
-      else showStatus(`No new transects. Skipped ${skipped}.`);
-    }
-
-    function loadTransectFile(file) {
-      if (!file) return;
-
-      const reader = new FileReader();
-      reader.onload = () => {
-        try {
-          const parsed = JSON.parse(String(reader.result || ""));
-          const normalized = normalizeLoadedFile(parsed);
-
-          if (!normalized || !Object.keys(normalized.transects).length) {
-            showStatus("Could not import this file.");
-            return;
-          }
-
-          pendingImportPayload = normalized;
-          setPending("import-mode", "Import file?");
-        } catch {
-          showStatus("Could not read this file.");
-        }
-      };
-
-      reader.readAsText(file);
-    }
-
-    async function saveTransectFile() {
-      if (dirtyTransect) {
-        setPending("save-file-dirty", "Add changes before export?");
-        return;
-      }
-
-      const payload = {
-        app: "munsell-stp-displayer",
-        version: 1,
-        savedAt: new Date().toISOString(),
-        activeTransectName,
-        transects: transectStore
-      };
 
       const json = JSON.stringify(payload, null, 2);
       const blob = new Blob([json], { type: "application/json" });
-      const filename = "STP_File.json";
+      const filename = backupFilename();
 
       if (window.showSaveFilePicker) {
         try {
@@ -6461,8 +6502,8 @@
             suggestedName: filename,
             types: [
               {
-                description: "STP JSON file",
-                accept: { "application/json": [".json"] }
+                description: "PitProfile backup file",
+                accept: { "application/json": [".pitprofile", ".json"] }
               }
             ]
           });
@@ -6471,11 +6512,11 @@
           await writable.write(blob);
           await writable.close();
 
-          showStatus("Exported.");
+          showStatus("Backup saved.");
           return;
         } catch (err) {
           if (err && err.name === "AbortError") {
-            showStatus("Export canceled.");
+            showStatus("Backup canceled.");
             return;
           }
         }
@@ -6483,16 +6524,140 @@
 
       pendingAction = {
         type: "confirm-download-export",
-        text: "Export to Downloads?"
+        text: "Save backup to Downloads?"
       };
 
-      pendingDownloadExport = {
-        blob,
-        filename
-      };
-
+      pendingDownloadExport = { blob, filename };
       render();
     }
+
+    async function resolveBackupSeriesConflict(name, backupSnapshot, index, total) {
+      $("conflictProgress").textContent = `${index + 1} of ${total}`;
+      const diffRows = [];
+      const currentProfiles = Array.isArray(transectStore[name]?.pages) ? transectStore[name].pages.length : 0;
+      const backupProfiles = Array.isArray(backupSnapshot?.pages) ? backupSnapshot.pages.length : 0;
+      if (currentProfiles !== backupProfiles) {
+        diffRows.push({ field: "Profiles", mine: String(currentProfiles), theirs: String(backupProfiles) });
+      }
+      const currentDepth = Number(transectStore[name]?.renderDepth || DEFAULT_RENDER_DEPTH_CM);
+      const backupDepth = Number(backupSnapshot?.renderDepth || DEFAULT_RENDER_DEPTH_CM);
+      if (currentDepth !== backupDepth) {
+        diffRows.push({ field: "Depth", mine: `${currentDepth}cm`, theirs: `${backupDepth}cm` });
+      }
+
+      const choice = await renderConflictModal({
+        title: `${name} · backup conflict`,
+        body: "This series already exists. Override replaces the current version with the backup version. Skip keeps the current version.",
+        diffRows,
+        buttons: [
+          { choice: "override", label: "Override", primary: true },
+          { choice: "skip", label: "Skip" },
+          { choice: "abort", label: "Cancel" }
+        ]
+      });
+
+      if (choice === "abort") return "abort";
+      if (choice === "override") {
+        transectStore[name] = backupSnapshot;
+        return "override";
+      }
+      return "skip";
+    }
+
+    async function applyBackupPayload(normalized) {
+      if (!normalized || !normalized.transects || !Object.keys(normalized.transects).length) {
+        showStatus("This does not look like a PitProfile backup file.");
+        return;
+      }
+
+      flushWorkingSeriesToStore();
+
+      const imported = normalized.transects;
+      const names = Object.keys(imported).sort(naturalTransectSort);
+      const conflicts = names.filter(name => transectStore[name] && !storesMatch(transectStore[name], imported[name]));
+      const additions = names.filter(name => !transectStore[name]);
+      const identical = names.filter(name => transectStore[name] && storesMatch(transectStore[name], imported[name]));
+
+      const intro = await renderConflictModal({
+        title: "Load Backup",
+        body: `This backup contains ${names.length} Series and ${countProfilesInStore(imported)} Profiles. ${conflicts.length ? "Some data already exists." : "No conflicts found."}`,
+        diffRows: [
+          { field: "New Series", mine: "Current", theirs: String(additions.length) },
+          { field: "Conflicts", mine: "Current", theirs: String(conflicts.length) }
+        ],
+        buttons: [
+          { choice: "load", label: conflicts.length ? "Review" : "Load Backup", primary: true },
+          { choice: "abort", label: "Cancel" }
+        ]
+      });
+      if (intro === "abort") return;
+
+      let added = 0;
+      let overridden = 0;
+      let skipped = identical.length;
+
+      for (const name of additions) {
+        transectStore[name] = imported[name];
+        added += 1;
+      }
+
+      for (let i = 0; i < conflicts.length; i++) {
+        const name = conflicts[i];
+        const result = await resolveBackupSeriesConflict(name, imported[name], i, conflicts.length);
+        if (result === "abort") {
+          showStatus("Backup load canceled.");
+          refreshTransectDropdown();
+          render();
+          return;
+        }
+        if (result === "override") overridden += 1;
+        else skipped += 1;
+      }
+
+      const active = normalized.active && transectStore[normalized.active]
+        ? normalized.active
+        : (activeTransectName && transectStore[activeTransectName] ? activeTransectName : Object.keys(transectStore).sort(naturalTransectSort)[0]);
+
+      if (active) {
+        applyTransectSnapshot(active, transectStore[active], { resetToFirstPage: true });
+      } else {
+        refreshTransectDropdown();
+        render();
+      }
+
+      saveLocalWorkingState();
+      showStatus(`Backup loaded. Added ${added}. Overrode ${overridden}. Skipped ${skipped}.`);
+    }
+
+    function loadBackupFile(file) {
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const parsed = JSON.parse(String(reader.result || ""));
+          const normalized = normalizeLoadedFile(parsed);
+
+          if (!normalized || !Object.keys(normalized.transects).length) {
+            showStatus("This does not look like a PitProfile backup file.");
+            return;
+          }
+
+          pendingImportPayload = normalized;
+          await applyBackupPayload(normalized);
+          pendingImportPayload = null;
+        } catch (error) {
+          console.error("Backup load failed:", error);
+          showStatus("Could not read this backup file.");
+        }
+      };
+
+      reader.readAsText(file);
+    }
+
+    // Backward-compatible wrappers for older hooks/debug snippets.
+    function loadTransectFile(file) { loadBackupFile(file); }
+    async function saveTransectFile() { return saveBackupFile(); }
 
     let _toastTimer = null;
 
@@ -6705,6 +6870,39 @@
       queuePitProfileVisualSnapshotCapture();
     }
 
+    $("backupMenu").addEventListener("click", () => {
+      pendingAction = null;
+      $("backupModal").hidden = false;
+    });
+
+    $("cancelBackup").addEventListener("click", () => {
+      $("backupModal").hidden = true;
+    });
+
+    $("saveBackup").addEventListener("click", () => {
+      $("backupModal").hidden = true;
+      saveBackupFile();
+    });
+
+    $("loadBackup").addEventListener("click", () => {
+      $("backupModal").hidden = true;
+      const input = $("loadBackupFileInput");
+      if (input) {
+        input.value = "";
+        input.click();
+      }
+    });
+
+    $("loadBackupFileInput").addEventListener("change", (event) => {
+      const file = event.target.files && event.target.files[0];
+      loadBackupFile(file);
+      event.target.value = "";
+    });
+
+    $("backupModal").addEventListener("click", (event) => {
+      if (event.target === $("backupModal")) $("backupModal").hidden = true;
+    });
+
     $("addPage").addEventListener("click", () => {
       insertPageAfterCurrent(false);
     });
@@ -6726,7 +6924,7 @@
       render();
     });
 
-    $("confirmYes").addEventListener("click", () => {
+    $("confirmYes").addEventListener("click", async () => {
       if (!pendingAction) return;
 
       if (pendingAction.type === "add") insertPageAfterCurrent(true);
@@ -6773,18 +6971,18 @@
           URL.revokeObjectURL(url);
         }
 
-        showStatus("Exported to Downloads.");
+        showStatus("Backup saved. Check your Downloads folder if you need to find it.");
       }
       else if (pendingAction.type === "confirm-import-replace") {
         pendingAction = null;
         render();
-        $("loadTransectFileInput").click();
+        $("loadBackupFileInput").click();
       }
       else if (pendingAction.type === "import-mode") {
         const payload = pendingImportPayload;
         pendingAction = null;
         pendingImportPayload = null;
-        applyImportedPayload(payload, "merge");
+        await applyBackupPayload(payload);
       }
       else if (pendingAction.type === "confirm-sync-team") {
         pendingAction = null;
@@ -6796,7 +6994,7 @@
       }
     });
 
-    $("confirmNo").addEventListener("click", () => {
+    $("confirmNo").addEventListener("click", async () => {
       if (pendingAction?.type === "leave-team") {
         // "No" on the leave prompt means "Keep Copy" — leave but retain local data
         pendingAction = null;
@@ -6812,10 +7010,9 @@
       }
 
       if (pendingAction?.type === "import-mode") {
-        const payload = pendingImportPayload;
-        pendingAction = null;
         pendingImportPayload = null;
-        applyImportedPayload(payload, "replace");
+        pendingAction = null;
+        render();
         return;
       }
 
