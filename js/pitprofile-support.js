@@ -20,7 +20,6 @@
   }
 
   function getTeamContext() {
-    var saved = getStoredAppState();
     var teamName = (el('#teamNameInput') && el('#teamNameInput').value) || (el('#teamNameDisplay') && el('#teamNameDisplay').textContent) || '';
     var member = (el('#memberNameInput') && el('#memberNameInput').value) || '';
     try {
@@ -31,9 +30,23 @@
     } catch (_) {}
     return {
       teamName: clean(teamName, 120),
-      memberName: clean(member, 120),
-      activeTransect: clean((el('#transectLabel') && el('#transectLabel').textContent) || (saved && (saved.activeTransectName || saved.contextLabel)) || '', 120),
-      savedTransects: saved && saved.transects ? Object.keys(saved.transects).slice(0, 80) : []
+      memberName: clean(member, 120)
+    };
+  }
+
+  function getSeriesContext() {
+    var saved = getStoredAppState();
+    return {
+      activeSeries: clean((el('#contextInput') && el('#contextInput').textContent) || (saved && (saved.activeTransectName || saved.contextLabel)) || '', 120),
+      savedSeries: saved && saved.transects ? Object.keys(saved.transects).slice(0, 80) : []
+    };
+  }
+
+  function getProfileContext() {
+    var saved = getStoredAppState();
+    var savedPage = saved && saved.pages && Number.isInteger(saved.pageIndex) ? saved.pages[saved.pageIndex] : null;
+    return {
+      activeProfile: clean((el('#stpJumpInput') && el('#stpJumpInput').value) || (el('#changeStpNumberInput') && el('#changeStpNumberInput').value) || (savedPage && savedPage.id) || '', 40)
     };
   }
 
@@ -49,7 +62,9 @@
         offsetLeft: Math.round(window.visualViewport.offsetLeft || 0),
         scale: window.visualViewport.scale || 1
       } : null,
-      team: getTeamContext()
+      team: getTeamContext(),
+      series: getSeriesContext(),
+      profile: getProfileContext()
     };
   }
 
@@ -58,6 +73,8 @@
       app: 'PitProfile',
       location: { href: location.href, pathname: location.pathname, hash: location.hash },
       team: getTeamContext(),
+      series: getSeriesContext(),
+      profile: getProfileContext(),
       timestamp: new Date().toISOString()
     };
   }

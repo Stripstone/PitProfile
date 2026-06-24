@@ -197,16 +197,46 @@ function parseDataUrlAttachment(input) {
   };
 }
 
+function getSupportSeries(context) {
+  return clampText(
+    context?.series?.activeSeries ||
+    context?.team?.activeSeries ||
+    context?.team?.activeTransect ||
+    context?.activeSeries ||
+    context?.activeTransect ||
+    '',
+    120
+  ) || 'unknown';
+}
+
+function getSupportProfile(context) {
+  return clampText(
+    context?.profile?.activeProfile ||
+    context?.team?.activeProfile ||
+    context?.team?.activeStp ||
+    context?.team?.activeSTP ||
+    context?.activeProfile ||
+    context?.activeStp ||
+    context?.activeSTP ||
+    '',
+    40
+  ) || 'unknown';
+}
+
 function buildEmailText({ type, path, message, contactEmail, context, diagnostics, transcript }) {
   const identity = contactEmail || context?.team?.memberName || context?.team?.member || 'anonymous/public';
   const teamName = context?.team?.teamName || context?.team?.name || 'unknown';
+  const seriesName = getSupportSeries(context);
+  const profileName = getSupportProfile(context);
   const route = context?.location?.href || context?.route || 'unknown';
   return [
-    'New PitProfile support message', '',
+    'New PitProfile feedback message', '',
     `Type: ${type}`,
     `Path: ${path.length ? path.join(' > ') : 'unknown'}`,
     `Identity: ${identity}`,
     `Team: ${teamName}`,
+    `Series: ${seriesName}`,
+    `Profile: ${profileName}`,
     `Route: ${route}`,
     `Timestamp: ${new Date().toISOString()}`,
     '', 'Message:', message,
