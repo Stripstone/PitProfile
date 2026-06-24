@@ -3949,7 +3949,7 @@
         activeTeam = { name, code, member };
         saveLocalWorkingState();
         updateTeamDisplay();
-        await syncTeamConfirmed({ joinLoadOnly: true, teamWasCreated: false });
+        await syncTeamConfirmed({ teamWasCreated: false });
       },
       resetLocal() {
         transectStore = {};
@@ -5242,7 +5242,7 @@
         updateTeamDisplay();
         hideTeamJoinPanel();
         setTeamAuthPending(false);
-        await syncTeamConfirmed({ joinLoadOnly: true, teamWasCreated: Boolean(data.created) });
+        await syncTeamConfirmed({ teamWasCreated: Boolean(data.created) });
       } catch (error) {
         console.error("Create/join team failed:", JSON.stringify(error));
         showStatus(error?.message || "Team failed.");
@@ -5820,11 +5820,11 @@
     // ── Main sync entry point ────────────────────────────────────────
 
     async function syncTeamConfirmed(options = {}) {
-      const { joinLoadOnly = false, teamWasCreated = false } = options || {};
+      const { teamWasCreated = false } = options || {};
       clearSyncDiag();
-      syncDiag(joinLoadOnly ? "lifecycle: team load started" : "lifecycle: sync started");
+      syncDiag("lifecycle: sync started");
 
-      if (teamAuthPending && !joinLoadOnly) {
+      if (teamAuthPending) {
         showStatus("Finish team verification before syncing.");
         return;
       }
@@ -5848,7 +5848,7 @@
       }
 
       try {
-        showStatus(joinLoadOnly ? "Loading team…" : "Syncing…");
+        showStatus("Syncing…");
 
         const teamKey = await teamKeyFor(activeTeam.name, activeTeam.code);
 
@@ -5887,42 +5887,6 @@
           for (const name of pushed.deletedNames || []) syncSessionDeletedNames.add(name);
           syncDiag(`transport: ${stage} push complete`, pushed);
           return pushed;
-        }
-
-        if (joinLoadOnly) {
-          const { rows, autoMerge, conflicts } = await pullAndDiff("join-load");
-          const hadActiveBeforeJoinLoad = Boolean(activeTransectName && transectStore[activeTransectName]);
-          if (autoMerge.length) applySyncAutoMerges(autoMerge);
-
-          if (!hadActiveBeforeJoinLoad) {
-            const names = Object.keys(transectStore).sort(naturalTransectSort);
-            const firstRemoteName = autoMerge.find(item => item.type === "add-transect" && transectStore[item.transectName])?.transectName;
-            const openName = firstRemoteName || names[0];
-            if (openName && transectStore[openName]) {
-              applyTransectSnapshot(openName, transectStore[openName], { resetToFirstPage: true });
-            }
-          } else {
-            pageIndex = 0;
-            if (activeTransectName && transectStore[activeTransectName]) {
-              transectStore[activeTransectName].pageIndex = 0;
-            }
-          }
-
-          saveLocalWorkingState();
-          refreshTransectDropdown();
-          render();
-
-          const baseStatus = teamWasCreated ? "Created team." : "Joined team.";
-          if (conflicts.length) {
-            showStatus(`${baseStatus} Sync to review differences.`);
-          } else if (autoMerge.length) {
-            showStatus(`${baseStatus} Loaded ${autoMerge.length} series${autoMerge.length === 1 ? "" : ""}.`);
-          } else if (rows.length) {
-            showStatus(baseStatus);
-          } else {
-            showStatus(baseStatus);
-          }
-          return;
         }
 
         let { autoMerge, conflicts } = await pullAndDiff("initial");
@@ -5968,7 +5932,7 @@
         refreshTransectDropdown();
         render();
         if (window.__ppDiag) window.__ppDiag.syncOk(new Date().toISOString());
-        showStatus("Synced.");
+        showStatus(teamWasCreated ? "Team created." : "Synced.");
 
       } catch (error) {
         console.error("Sync failed:", {
@@ -5978,7 +5942,7 @@
           code: error?.code
         });
         if (window.__ppDiag) window.__ppDiag.syncFail(error?.message || "unknown");
-        showStatus(joinLoadOnly ? "Couldn’t load team." : "Couldn’t sync.");
+        showStatus("Couldn't sync.");
       }
     }
 
