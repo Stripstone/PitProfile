@@ -454,39 +454,45 @@
 
   /* Onboarding Footer */
   .ob-footer {
-    width: 100%;
-    max-width: 560px;
+    width: min(100%, 760px);
+    max-width: calc(100vw - 32px);
     margin: 0 auto;
     text-align: center;
     font-size: 0.8rem;
     color: #78716c;
     line-height: 1.5;
   }
-  .ob-footer a { 
+  .ob-footer a,
+  .ob-footer .ob-feedback-btn { 
     color: #57534e; 
     font-weight: 700; 
     text-decoration: underline; 
     text-underline-offset: 2px; 
   }
-  .ob-footer a:hover { 
+  .ob-footer .ob-feedback-btn {
+    background: none;
+    border: 0;
+    padding: 0;
+    margin: 0;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: inherit;
+  }
+  .ob-footer a:hover,
+  .ob-footer .ob-feedback-btn:hover { 
     color: #1c1917; 
   }
   .ob-footer-top { 
     margin-bottom: 10px; 
   }
   .ob-footer-bottom {
-    display: flex;
-    justify-content: center;
-    align-items: center;
     border-top: 1px solid #d6d3d1;
     padding-top: 10px;
-    gap: 8px;
-    flex-wrap: wrap;
     font-weight: 600;
+    white-space: nowrap;
   }
-  .ob-footer-links { 
-    display: flex; 
-    gap: 14px; 
+  .ob-footer-links {
+    display: inline;
   }
 
   /* ============================================================
@@ -1049,10 +1055,11 @@
   }
 
   .shell-footer-row.legal-links {
+    display: block;
     font-size: 0.68rem;
     font-weight: 700;
     color: var(--stone-400);
-    gap: 7px;
+    white-space: nowrap;
   }
 
   .support-cta {
@@ -1104,6 +1111,10 @@
   }
 
   @media (max-width: 600px) {
+    .ob-footer-bottom,
+    .shell-footer-row.legal-links {
+      white-space: normal;
+    }
     .shell-footer {
       padding: 9px 10px 7px;
       gap: 6px;
@@ -2911,10 +2922,13 @@
         </div>
         <div class="ob-footer-bottom">
           <span>PitProfile Visualizer v1.1 © 2026 SummitsVault, LLC.</span>
-          <div class="ob-footer-links">
+          <span class="ob-footer-links">
             <a class="policy-link" href="legal/terms.html" onclick="openPolicyModal('legal/terms.html', 'Terms of Service'); return false;">Terms of Service</a>
+            <span class="footer-dot-sep">·</span>
             <a class="policy-link" href="legal/privacy.html" onclick="openPolicyModal('legal/privacy.html', 'Privacy Policy'); return false;">Privacy Policy</a>
-          </div>
+            <span class="footer-dot-sep">·</span>
+            <button type="button" class="ob-feedback-btn" data-pp-feedback-open onclick="openPitProfileFeedbackModal(event)">Send Feedback</button>
+          </span>
         </div>
       </footer>
     </div>
@@ -6887,6 +6901,8 @@
         <button type="button" class="policy-link-btn" onclick="openPolicyModal('legal/terms.html', 'Terms of Service')">Terms of Service</button>
         <span class="footer-dot-sep">·</span>
         <button type="button" class="policy-link-btn" onclick="openPolicyModal('legal/privacy.html', 'Privacy Policy')">Privacy Policy</button>
+        <span class="footer-dot-sep">·</span>
+        <button type="button" class="policy-link-btn" data-pp-feedback-open onclick="openPitProfileFeedbackModal(event)">Send Feedback</button>
       </div>
     </footer>
   </div><!-- /app-shell -->
@@ -8026,5 +8042,6 @@
   <!-- END PITPROFILE-DIAG v2 -->
 
 
+  <script src="/js/pitprofile-support.js" defer></script>
 </body>
 </html>
