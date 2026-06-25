@@ -3078,6 +3078,53 @@
     }
   }
 
+
+  /* ── In-app pending overlay ─────────────────────────────────────────
+     Applied via body.pitprofile-inapp-pending.
+     Covers app-shell entirely, blurs content, blocks all interaction.
+     Cleared explicitly by the owning operation after render + rAF.      */
+  #pitprofile-inapp-pending-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 9000;
+    pointer-events: all;
+    background: rgba(28, 25, 23, 0.22);
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
+    align-items: center;
+    justify-content: center;
+  }
+  body.pitprofile-inapp-pending #pitprofile-inapp-pending-overlay {
+    display: flex;
+  }
+  .pitprofile-inapp-pending-card {
+    display: grid;
+    gap: 10px;
+    justify-items: center;
+    text-align: center;
+    border-radius: 18px;
+    background: rgba(239, 232, 219, 0.96);
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    padding: 22px 24px;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
+    min-width: 160px;
+  }
+  .pitprofile-inapp-pending-spinner {
+    width: 26px;
+    height: 26px;
+    border-radius: 999px;
+    border: 3px solid rgba(28, 25, 23, 0.15);
+    border-top-color: rgba(28, 25, 23, 0.60);
+    animation: ob-spin 0.85s linear infinite;
+  }
+  .pitprofile-inapp-pending-label {
+    font-size: 13px;
+    font-weight: 700;
+    color: #44403c;
+    letter-spacing: 0.01em;
+  }
+
   </style>
 </head>
 <body>
@@ -3896,24 +3943,76 @@
       return `sim_${stableSimHash(`${normalizeSimName(name, "team").toLowerCase()}|${normalizeSimName(code, "code").toLowerCase()}`)}`;
     }
 
-    function ensureSimTeam(db, name, code) {
-      const key = simTeamKey(name, code);
-      if (!db.teams[key]) {
-        db.teams[key] = {
-          key,
-          team_name: normalizeSimName(name, "Sim Team"),
-          team_code: normalizeSimName(code, "SIM"),
-          members: {},
-          series: {},
-          archive_reason: null,
-          archived_at: null,
-          purge_after: null,
-          created_at: simNow(),
-          updated_at: simNow(),
-          last_seen_at: simNow()
-        };
+    function simTeamNameMatches(team, teamName) {
+      return normalizeSimName(team?.team_name, "Sim Team").toLowerCase() === normalizeSimName(teamName, "Sim Team").toLowerCase();
+    }
+
+    function simTeamCodeMatches(team, teamCode) {
+      return normalizeSimName(team?.team_code, "SIM").toLowerCase() === normalizeSimName(teamCode, "SIM").toLowerCase();
+    }
+
+    function isSimTeamJoinable(team) {
+      return !!team && team.archive_reason !== "user_deleted";
+    }
+
+    function simPurgeAfter(days = 90) {
+      const date = new Date(Date.now() + Math.max(0, Number(days) || 0) * 24 * 60 * 60 * 1000);
+      return date.toISOString();
+    }
+
+    function sortedSimTeams(db) {
+      return Object.values(db.teams || {}).sort((a, b) => {
+        const activeRankA = a?.archive_reason === null || a?.archive_reason === undefined ? 0 : (a.archive_reason === "abandoned" ? 1 : 2);
+        const activeRankB = b?.archive_reason === null || b?.archive_reason === undefined ? 0 : (b.archive_reason === "abandoned" ? 1 : 2);
+        if (activeRankA !== activeRankB) return activeRankA - activeRankB;
+        return String(b?.created_at || "").localeCompare(String(a?.created_at || ""));
+      });
+    }
+
+    function findSimJoinableTeamByName(db, teamName) {
+      return sortedSimTeams(db).find(team => isSimTeamJoinable(team) && simTeamNameMatches(team, teamName)) || null;
+    }
+
+    function findSimJoinableTeamByNameCode(db, teamName, teamCode) {
+      return sortedSimTeams(db).find(team => isSimTeamJoinable(team) && simTeamNameMatches(team, teamName) && simTeamCodeMatches(team, teamCode)) || null;
+    }
+
+    function hasSimDeletedTeamByName(db, teamName) {
+      return Object.values(db.teams || {}).some(team => team?.archive_reason === "user_deleted" && simTeamNameMatches(team, teamName));
+    }
+
+    function allocateSimTeamKey(db, name, code) {
+      const baseKey = simTeamKey(name, code);
+      if (!db.teams[baseKey]) return baseKey;
+      let counter = 2;
+      let key = `${baseKey}_r${counter}`;
+      while (db.teams[key]) {
+        counter += 1;
+        key = `${baseKey}_r${counter}`;
       }
+      return key;
+    }
+
+    function createSimTeam(db, name, code) {
+      const key = allocateSimTeamKey(db, name, code);
+      db.teams[key] = {
+        key,
+        team_name: normalizeSimName(name, "Sim Team"),
+        team_code: normalizeSimName(code, "SIM"),
+        members: {},
+        series: {},
+        archive_reason: null,
+        archived_at: null,
+        purge_after: null,
+        created_at: simNow(),
+        updated_at: simNow(),
+        last_seen_at: simNow()
+      };
       return db.teams[key];
+    }
+
+    function ensureSimTeam(db, name, code) {
+      return findSimJoinableTeamByNameCode(db, name, code) || createSimTeam(db, name, code);
     }
 
     function findSimTeamByKey(db, teamKey) {
@@ -3921,10 +4020,7 @@
     }
 
     function findSimTeamByName(db, teamName) {
-      const target = normalizeSimName(teamName, "Sim Team").toLowerCase();
-      return Object.values(db.teams || {}).find(team =>
-        normalizeSimName(team?.team_name, "Sim Team").toLowerCase() === target
-      ) || null;
+      return findSimJoinableTeamByName(db, teamName);
     }
 
     function ensureSimMember(team, memberName) {
@@ -3963,7 +4059,8 @@
         deleted_at: null,
         version: meta.version || nextVersion,
         updated_at: meta.updated_at || simNow(),
-        created_at: prev?.created_at || simNow()
+        created_at: prev?.created_at || simNow(),
+        archived_at: null
       };
       team.updated_at = simNow();
       return team.series[name];
@@ -3984,7 +4081,8 @@
         deleted_at: meta.deleted_at || simNow(),
         version: Number(prev?.version || 0) + 1,
         updated_at: meta.updated_at || simNow(),
-        created_at: prev?.created_at || simNow()
+        created_at: prev?.created_at || simNow(),
+        archived_at: null
       };
       team.updated_at = simNow();
       return team.series[name];
@@ -3999,7 +4097,8 @@
         deleted: Boolean(row.deleted),
         deleted_at: row.deleted_at || null,
         updated_at: row.updated_at || null,
-        version: Number(row.version || 0)
+        version: Number(row.version || 0),
+        archived_at: row.archived_at || null
       };
     }
 
@@ -4022,42 +4121,44 @@
 
         try {
           if (name === "profile_v2_team_key") {
-            return { data: simTeamKey(params.p_team_name, params.p_team_code), error: null };
+            const team = findSimJoinableTeamByNameCode(db, params.p_team_name, params.p_team_code);
+            return { data: team ? team.key : null, error: null };
           }
 
           if (name === "profile_v2_check_team") {
-            const key = simTeamKey(params.p_team_name, params.p_team_code);
-            const existingByName = findSimTeamByName(db, params.p_team_name);
-            if (!existingByName) return { data: { ok: true, status: "not_found", simulated: true }, error: null };
-            if (existingByName.key !== key) {
+            const existingByName = findSimJoinableTeamByName(db, params.p_team_name);
+            if (!existingByName) {
+              return { data: { ok: true, status: "not_found", deleted_available: hasSimDeletedTeamByName(db, params.p_team_name), simulated: true }, error: null };
+            }
+            if (!simTeamCodeMatches(existingByName, params.p_team_code)) {
               return { data: { ok: false, status: "code_mismatch", error: "TEAM_CODE_MISMATCH", message: "Team name already exists with a different code.", simulated: true }, error: null };
             }
-            if (existingByName.archive_reason === "user_deleted") {
-              return { data: { ok: false, status: "team_deleted", error: "TEAM_DELETED", message: "This team was deleted. Shoot us a message if you want it restored.", simulated: true }, error: null };
-            }
-            return { data: { ok: true, status: "can_join", team_name: existingByName.team_name, team_key: existingByName.key, simulated: true }, error: null };
+            return { data: { ok: true, status: "can_join", team_name: existingByName.team_name, team_key: existingByName.key, archived: existingByName.archive_reason === "abandoned", simulated: true }, error: null };
           }
 
           if (name === "profile_v2_create_or_join_team") {
-            const key = simTeamKey(params.p_team_name, params.p_team_code);
-            const existingByName = findSimTeamByName(db, params.p_team_name);
-            if (existingByName && existingByName.key !== key) {
+            const existingByName = findSimJoinableTeamByName(db, params.p_team_name);
+            if (existingByName && !simTeamCodeMatches(existingByName, params.p_team_code)) {
               return { data: { ok: false, error: "TEAM_CODE_MISMATCH", message: "Team name already exists with a different code.", team_name: existingByName.team_name, simulated: true }, error: null };
             }
-            if (existingByName?.archive_reason === "user_deleted") {
-              return { data: { ok: false, error: "TEAM_DELETED", message: "This team was deleted. Shoot us a message if you want it restored.", simulated: true }, error: null };
+            let created = false;
+            let restored = false;
+            let team = existingByName || null;
+            if (!team) {
+              team = createSimTeam(db, params.p_team_name, params.p_team_code);
+              created = true;
             }
-            const created = !db.teams[key];
-            const team = ensureSimTeam(db, params.p_team_name, params.p_team_code);
             if (team.archive_reason === "abandoned") {
+              restored = true;
               team.archive_reason = null;
               team.archived_at = null;
               team.purge_after = null;
+              Object.values(team.series || {}).forEach(row => { if (row) row.archived_at = null; });
             }
             team.last_seen_at = simNow();
             ensureSimMember(team, params.p_member_name || params.p_author_name || "Sim Member");
             writeSimDb(db);
-            return { data: { ok: true, created, team_name: team.team_name, team_key: key, member_name: params.p_member_name || "", simulated: true }, error: null };
+            return { data: { ok: true, created, restored, team_name: team.team_name, team_key: team.key, member_name: params.p_member_name || "", simulated: true }, error: null };
           }
 
           if (name === "profile_v2_leave_team") {
@@ -4070,7 +4171,7 @@
             if (activeMembers === 0 && team.archive_reason !== "user_deleted") {
               team.archive_reason = "abandoned";
               team.archived_at = simNow();
-              team.purge_after = simNow();
+              team.purge_after = simPurgeAfter(90);
             }
             writeSimDb(db);
             return { data: { ok: true, active_members: activeMembers, archived: activeMembers === 0, simulated: true }, error: null };
@@ -4081,7 +4182,7 @@
             if (!team) return { data: null, error: { message: "Sim team not found", code: "SIM_TEAM_NOT_FOUND" } };
             team.archive_reason = "user_deleted";
             team.archived_at = simNow();
-            team.purge_after = simNow();
+            team.purge_after = simPurgeAfter(90);
             Object.values(team.members || {}).forEach(m => { m.left_at = m.left_at || simNow(); m.last_seen_at = simNow(); });
             writeSimDb(db);
             return { data: { ok: true, deleted: true, message: "Team deleted.", simulated: true }, error: null };
@@ -4140,7 +4241,9 @@
     function currentSimTeamKey() {
       const name = activeTeam?.name || "Sim Team";
       const code = activeTeam?.code || "SIM";
-      return simTeamKey(name, code);
+      const db = readSimDb();
+      const team = findSimJoinableTeamByNameCode(db, name, code);
+      return team?.key || simTeamKey(name, code);
     }
 
     function currentSnapshotPayloadForSim(name = activeSeriesName || contextLabel || "S-01") {
@@ -4203,6 +4306,19 @@
         for (const member of members) ensureSimMember(team, member);
         writeSimDb(db);
         return clone(team);
+      },
+      archiveTeam({ teamName = "Sim Team", teamCode = "SIM", reason = "abandoned" } = {}) {
+        const db = readSimDb();
+        const team = findSimJoinableTeamByNameCode(db, teamName, teamCode) || ensureSimTeam(db, teamName, teamCode);
+        team.archive_reason = reason === "user_deleted" ? "user_deleted" : "abandoned";
+        team.archived_at = simNow();
+        team.purge_after = simPurgeAfter(90);
+        Object.values(team.members || {}).forEach(m => { m.left_at = m.left_at || simNow(); m.last_seen_at = simNow(); });
+        writeSimDb(db);
+        return clone(team);
+      },
+      deleteTeam(opts = {}) {
+        return this.archiveTeam(Object.assign({}, opts, { reason: "user_deleted" }));
       },
       saveAsMember({ teamName = activeTeam?.name || "Sim Team", teamCode = activeTeam?.code || "SIM", member = "Maya", seriesName = "Remote S-01", payload = null } = {}) {
         const db = readSimDb();
@@ -5578,10 +5694,12 @@
     }
 
     function clearActiveTeam(keepLocalData = false, statusText = null) {
+      ppProbe('clearActiveTeam called', { keepLocalData, seriesCount: Object.keys(seriesStore || {}).length, activeSeriesName });
       if (!keepLocalData) {
         seriesStore = {};
         try { localStorage.removeItem("munsell-profile-deleted-series-v2"); } catch {}
         ensureDefaultSeriesAvailable();
+        ppProbe('clearActiveTeam: default store initialized', { seriesCount: Object.keys(seriesStore).length, activeSeriesName });
       }
       clearActiveTeamSession();
       hideTeamJoinPanel();
@@ -5590,7 +5708,9 @@
       // Rehydrate working state from the (now cleared or kept) store
       // so the canvas reflects the new local state immediately.
       alignWorkingStateToSyncedStore();
+      ppProbe('clearActiveTeam: about to render', { activeSeriesName, pageIndex, profileCount: Array.isArray(pages) ? pages.length : 0 });
       render();
+      ppProbe('clearActiveTeam: render complete');
       showStatus(statusText || (keepLocalData ? "Left team. Local copy kept." : "Left team. Local data cleared."));
     }
 
@@ -5609,9 +5729,24 @@
 
     async function leaveTeamFromModal(keepLocalData = false) {
       const team = activeTeam ? { ...activeTeam } : null;
+      // Show pending overlay immediately — hides app state while data mutates.
+      // hideAppPending() is called explicitly after render + paint frame.
+      showAppPending('Leaving team…');
       closeLeaveTeamModal();
-      if (team) await notifyBackendTeamLeave(team, keepLocalData);
-      clearActiveTeam(keepLocalData, keepLocalData ? "Left team. Local copy kept." : "Left team.");
+      try {
+        if (team) await notifyBackendTeamLeave(team, keepLocalData);
+        // Fix: flush dirty working state into store before clearing/aligning,
+        // so post-sync edits survive a Keep Copy leave.
+        if (keepLocalData && dirtySeries && activeSeriesName) {
+          seriesStore[activeSeriesName] = snapshotSeries();
+          dirtySeries = false;
+          ppProbe('leaveTeamFromModal: flushed dirty state before keep-copy', { activeSeriesName });
+        }
+        clearActiveTeam(keepLocalData, keepLocalData ? "Left team. Local copy kept." : "Left team.");
+        await waitForPaintFrame();
+      } finally {
+        hideAppPending();
+      }
     }
 
     function requestLeaveTeam() {
@@ -5827,22 +5962,34 @@
 
     function isLocalWorkspaceCleanForTeamJoin() {
       const tombstones = deletedSeriesSet();
-      if (tombstones.size) return false;
-      if (dirtySeries) return false;
-
       const store = seriesStore && typeof seriesStore === "object" ? seriesStore : {};
       const names = Object.keys(store);
+      const diag = {
+        tombstones: tombstones.size,
+        dirtySeries,
+        storeNames: names,
+        activeSeriesName,
+        contextLabel,
+        pageCount: Array.isArray(pages) ? pages.length : 0
+      };
+
+      if (tombstones.size) { ppProbe('isLocalWorkspaceClean: FALSE (tombstones)', diag); return false; }
+      if (dirtySeries) { ppProbe('isLocalWorkspaceClean: FALSE (dirty)', diag); return false; }
 
       if (!names.length) {
-        return isDefaultStarterPageList(pages) || !Array.isArray(pages) || !pages.length;
+        const result = isDefaultStarterPageList(pages) || !Array.isArray(pages) || !pages.length;
+        ppProbe('isLocalWorkspaceClean: empty store -> ' + result, diag);
+        return result;
       }
 
-      if (names.length !== 1 || names[0] !== "S-01") return false;
-      if (!isDefaultStarterSeries("S-01", store["S-01"])) return false;
+      if (names.length !== 1 || names[0] !== "S-01") { ppProbe('isLocalWorkspaceClean: FALSE (wrong store)', diag); return false; }
+      if (!isDefaultStarterSeries("S-01", store["S-01"])) { ppProbe('isLocalWorkspaceClean: FALSE (non-default S-01)', diag); return false; }
 
       const currentName = String(activeSeriesName || contextLabel || "S-01");
-      if (currentName && currentName !== "S-01") return false;
-      return isDefaultStarterPageList(pages);
+      if (currentName && currentName !== "S-01") { ppProbe('isLocalWorkspaceClean: FALSE (wrong active name)', diag); return false; }
+      const result = isDefaultStarterPageList(pages);
+      ppProbe('isLocalWorkspaceClean: ' + result + ' (page check)', diag);
+      return result;
     }
 
     function applyRemoteRowsAsCleanLocalStore(remoteRows) {
@@ -5855,6 +6002,8 @@
       const names = Object.keys(nextStore).sort(naturalSeriesSort);
       if (!names.length) return false;
 
+      ppProbe('remote data apply started (clean local)', { seriesCount: names.length });
+      beginBulkApply('team-sync-clean-local');
       seriesStore = nextStore;
       activeSeriesName = names[0];
       contextLabel = activeSeriesName;
@@ -5862,7 +6011,10 @@
       applySeriesSnapshot(activeSeriesName, seriesStore[activeSeriesName], { resetToFirstPage: true });
       saveLocalWorkingState();
       refreshSeriesDropdown();
-      render();
+      // render() call from applySeriesSnapshot above is suppressed by bulk-apply;
+      // endBulkApply fires the single deferred render.
+      endBulkApply('team-sync-clean-local');
+      ppProbe('remote data apply completed (clean local)', { active: activeSeriesName });
       syncDiag("state: clean local accepted remote", { series: names.length, active: activeSeriesName });
       return true;
     }
@@ -6547,10 +6699,14 @@
           return false;
         }
 
+        ppProbe('remote data apply started (standard sync)', {});
+        beginBulkApply('team-sync-standard');
         alignWorkingStateToSyncedStore();
         saveLocalWorkingState();
         refreshSeriesDropdown();
-        render();
+        render(); // queued by bulk-apply; deferred until endBulkApply fires it
+        endBulkApply('team-sync-standard');
+        ppProbe('remote data apply completed (standard sync)', { activeSeriesName });
         if (window.__ppDiag) window.__ppDiag.syncOk(new Date().toISOString());
         if (!suppressStatus) showStatus(teamWasCreated ? "Team created." : "Synced.");
         return true;
@@ -6610,6 +6766,7 @@
       if (dirtySeries) syncDiag("state: dirty cleared by applySeriesSnapshot");
       dirtySeries = false;
       pendingAction = null;
+      ppProbe('applySeriesSnapshot: calling render', { name, profileCount: pages.length, bulkApplyDepth: _bulkApplyDepth });
       render();
       return true;
     }
@@ -7142,37 +7299,55 @@
       let overridden = 0;
       let skipped = identical.length;
 
-      for (const name of additions) {
-        seriesStore[name] = imported[name];
-        added += 1;
-      }
-
+      // Conflict resolution modals are shown before we touch data — user still interactive.
       for (let i = 0; i < conflicts.length; i++) {
         const name = conflicts[i];
         const result = await resolveBackupSeriesConflict(name, imported[name], i, conflicts.length);
         if (result === "abort") {
           showStatus("Backup load canceled.");
-          refreshSeriesDropdown();
-          render();
           return;
         }
         if (result === "override") overridden += 1;
         else skipped += 1;
       }
 
-      const active = normalized.active && seriesStore[normalized.active]
-        ? normalized.active
-        : (activeSeriesName && seriesStore[activeSeriesName] ? activeSeriesName : Object.keys(seriesStore).sort(naturalSeriesSort)[0]);
+      // All user decisions made. Show pending overlay before mutating data.
+      showAppPending('Loading backup…');
+      ppProbe('backup apply started', { additions: additions.length, conflicts: conflicts.length, identical: identical.length });
 
-      if (active) {
-        applySeriesSnapshot(active, seriesStore[active], { resetToFirstPage: true });
-      } else {
-        refreshSeriesDropdown();
-        render();
+      try {
+        beginBulkApply('backup-load');
+
+        for (const name of additions) {
+          seriesStore[name] = imported[name];
+          added += 1;
+        }
+
+        // Apply conflict resolutions already chosen above into the store.
+        // (resolveBackupSeriesConflict already wrote "override" choices to seriesStore;
+        //  no further mutation needed for those — additions loop covers new series.)
+
+        const active = normalized.active && seriesStore[normalized.active]
+          ? normalized.active
+          : (activeSeriesName && seriesStore[activeSeriesName] ? activeSeriesName : Object.keys(seriesStore).sort(naturalSeriesSort)[0]);
+
+        ppProbe('backup data committed', { active, added, overridden, skipped });
+
+        if (active) {
+          applySeriesSnapshot(active, seriesStore[active], { resetToFirstPage: true });
+        } else {
+          refreshSeriesDropdown();
+          render();
+        }
+
+        endBulkApply('backup-load');
+        ppProbe('backup apply completed', { active });
+        saveLocalWorkingState();
+        await waitForPaintFrame();
+        showStatus(`Backup loaded. Added ${added}. Overrode ${overridden}. Skipped ${skipped}.`);
+      } finally {
+        hideAppPending();
       }
-
-      saveLocalWorkingState();
-      showStatus(`Backup loaded. Added ${added}. Overrode ${overridden}. Skipped ${skipped}.`);
     }
 
     function loadBackupFile(file) {
@@ -7399,7 +7574,109 @@
 
 
 
+    // ── Render-probe infrastructure ──────────────────────────────────
+    // Access from console: window.__pitProfileRenderProbe.snapshot()
+    window.__pitProfileRenderProbe = {
+      enabled: true,
+      events: [],
+      clear() { this.events = []; },
+      snapshot() { return this.events.slice(-200); }
+    };
+
+    function ppProbe(event, data) {
+      try {
+        if (!window.__pitProfileRenderProbe?.enabled) return;
+        window.__pitProfileRenderProbe.events.push({
+          ts: new Date().toISOString(),
+          event,
+          data: data || null
+        });
+      } catch (_) {}
+    }
+
+    // ── Bulk-apply render suppression ────────────────────────────────
+    // beginBulkApply / endBulkApply wrap any multi-step data mutation
+    // that should produce exactly one final render.
+    let _bulkApplyDepth = 0;
+    let _renderQueuedDuringBulkApply = false;
+
+    function beginBulkApply(reason) {
+      _bulkApplyDepth += 1;
+      ppProbe('bulk apply begin', { reason, depth: _bulkApplyDepth });
+    }
+
+    function endBulkApply(reason) {
+      _bulkApplyDepth = Math.max(0, _bulkApplyDepth - 1);
+      ppProbe('bulk apply end', { reason, depth: _bulkApplyDepth, renderQueued: _renderQueuedDuringBulkApply });
+      if (_bulkApplyDepth === 0 && _renderQueuedDuringBulkApply) {
+        _renderQueuedDuringBulkApply = false;
+        ppProbe('bulk apply: firing deferred render', { reason });
+        render();
+      }
+    }
+
+
+    // ── In-app pending system ─────────────────────────────────────────
+    // Operations that mutate visible data call showAppPending() at entry
+    // and hideAppPending() explicitly after render + paint frame.
+    // render() has no awareness of this system.
+    // Timeout unblocks the user with an honest message — no fake success.
+    const APP_PENDING_TIMEOUT_MS = 10000;
+    let _appPendingTimer = null;
+
+    function showAppPending(message) {
+      const label = document.getElementById('pitprofile-inapp-pending-label');
+      if (label) label.textContent = message || '';
+      document.body.classList.add('pitprofile-inapp-pending');
+      if (_appPendingTimer) clearTimeout(_appPendingTimer);
+      _appPendingTimer = setTimeout(() => {
+        ppProbe('app pending: timeout unblock', { message });
+        hideAppPending();
+        showStatus('This is taking longer than expected.');
+      }, APP_PENDING_TIMEOUT_MS);
+      ppProbe('app pending: show', { message });
+    }
+
+    function hideAppPending() {
+      if (_appPendingTimer) { clearTimeout(_appPendingTimer); _appPendingTimer = null; }
+      document.body.classList.remove('pitprofile-inapp-pending');
+      ppProbe('app pending: hide');
+    }
+
+    // One requestAnimationFrame promise — used to guarantee a paint frame
+    // has been committed before clearing a pending state.
+    function waitForPaintFrame() {
+      // rAF 1: queued after current JS task, browser prepares to paint new DOM.
+      // rAF 2: fires after the first paint frame has been handed to the compositor.
+      // setTimeout(0): yields past compositor flush so the frame is on screen
+      //   before the caller continues (e.g. removes a pending overlay).
+      return new Promise(resolve =>
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() =>
+            setTimeout(resolve, 0)
+          )
+        )
+      );
+    }
+
     function render() {
+      if (_bulkApplyDepth > 0) {
+        _renderQueuedDuringBulkApply = true;
+        ppProbe('render queued (bulk apply active)', {
+          activeSeriesName,
+          pageIndex,
+          seriesCount: Object.keys(seriesStore || {}).length,
+          profileCount: Array.isArray(pages) ? pages.length : 0
+        });
+        return;
+      }
+      ppProbe('render start', {
+        activeSeriesName,
+        pageIndex,
+        seriesCount: Object.keys(seriesStore || {}).length,
+        profileCount: Array.isArray(pages) ? pages.length : 0,
+        pendingAction
+      });
       const current = page();
       bindTopBarInputs(current);
       bindProfileJumpInput(current);
@@ -7414,6 +7691,7 @@
       renderRenderDepth();
       renderRows(current);
       queuePitProfileVisualSnapshotCapture();
+      ppProbe('render end', { activeSeriesName, pageIndex });
     }
 
     $("backupMenu").addEventListener("click", () => {
@@ -7698,6 +7976,13 @@
     updateTeamDisplay();
     render();
   </script>
+    <!-- In-app pending overlay: shown during leave-team and backup-load operations -->
+    <div id="pitprofile-inapp-pending-overlay" aria-live="polite" aria-busy="true" aria-label="Please wait">
+      <div class="pitprofile-inapp-pending-card">
+        <div class="pitprofile-inapp-pending-spinner" aria-hidden="true"></div>
+        <div class="pitprofile-inapp-pending-label" id="pitprofile-inapp-pending-label"></div>
+      </div>
+    </div>
     </div><!-- /shell-body -->
     <footer class="shell-footer">
       <div class="shell-footer-row main-cta">
@@ -7958,6 +8243,7 @@
     }
 
     function obLaunchApp(e, options = {}) {
+      ppProbe('obLaunchApp: overlay dismissing');
       if (e) e.preventDefault();
       ensureLandingHistoryState();
       hideLanding();
@@ -8019,6 +8305,7 @@
     }
 
     function hideOnboardingPending() {
+      ppProbe('onboarding pending hidden');
       const card = document.getElementById('ob-team-card');
       const pending = document.getElementById('ob-team-pending');
       const skip = document.getElementById('ob-skip-team');
@@ -8042,6 +8329,7 @@
     }
 
     async function obJoinConfirmedTeam(details, options = {}) {
+      ppProbe('obJoinConfirmedTeam started');
       const confirmedTeam = await runOnboardingPendingStage('Joining team...', async () => {
         return await performTeamJoin(details, {
           teamWasCreated: Boolean(options.teamWasCreated),
@@ -8063,9 +8351,13 @@
         });
       }, { timeoutLabel: 'SYNC_TEAM_TIMEOUT' });
 
+      ppProbe('obJoinConfirmedTeam: sync stage done, waiting for paint frame', { syncOk });
+      // Wait for the browser to commit the settled render before dismissing the overlay.
+      await waitForPaintFrame();
       hideOnboardingPending();
       obLaunchApp(null);
       showStatus(syncOk ? 'Team joined.' : 'Team joined. Sync again from the app.');
+      ppProbe('obJoinConfirmedTeam completed');
       return confirmedTeam;
     }
 
