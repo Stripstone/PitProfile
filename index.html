@@ -7660,18 +7660,22 @@
       ppProbe('app pending: hide');
     }
 
-    // One requestAnimationFrame promise — used to guarantee a paint frame
-    // has been committed before clearing a pending state.
+    // waitForPaintFrame: yields past two complete paint cycles.
+    // rAF fires BEFORE the browser paints. setTimeout(0) is a macrotask that
+    // runs AFTER the browser has painted and composited the current frame.
+    // Two full cycles (rAF -> paint -> setTimeout -> rAF -> paint -> setTimeout)
+    // guarantees the DOM change made before this await is visually committed
+    // before the caller continues.
+    // Used both before mutation (overlay must be on screen) and after mutation
+    // (settled render must be on screen before overlay clears).
     function waitForPaintFrame() {
-      // rAF 1: queued after current JS task, browser prepares to paint new DOM.
-      // rAF 2: fires after the first paint frame has been handed to the compositor.
-      // setTimeout(0): yields past compositor flush so the frame is on screen
-      //   before the caller continues (e.g. removes a pending overlay).
       return new Promise(resolve =>
         requestAnimationFrame(() =>
-          requestAnimationFrame(() =>
-            setTimeout(resolve, 0)
-          )
+          setTimeout(() =>
+            requestAnimationFrame(() =>
+              setTimeout(resolve, 0)
+            )
+          , 0)
         )
       );
     }
