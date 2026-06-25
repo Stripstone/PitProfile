@@ -372,6 +372,43 @@
     padding: 17px;
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.16);
   }
+
+  .ob-pending-card {
+    width: min(100%, 408px);
+    display: grid;
+    gap: 8px;
+    justify-items: center;
+    text-align: center;
+    border-radius: 22px;
+    background: #efe8db;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    padding: 24px 18px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.16);
+  }
+
+  .ob-pending-card[hidden] {
+    display: none;
+  }
+
+  .ob-pending-title {
+    font-size: 18px;
+    font-weight: 900;
+    color: #1c1917;
+  }
+
+  .ob-pending-spinner {
+    width: 28px;
+    height: 28px;
+    border-radius: 999px;
+    border: 3px solid rgba(28, 25, 23, 0.16);
+    border-top-color: rgba(28, 25, 23, 0.66);
+    animation: ob-spin 0.85s linear infinite;
+    margin-bottom: 3px;
+  }
+
+  @keyframes ob-spin {
+    to { transform: rotate(360deg); }
+  }
   
   .ob-card-title { 
     font-size: 17px; 
@@ -1558,6 +1595,7 @@
     display: grid;
     place-items: center;
     z-index: 9000;
+    zoom: calc(1 / var(--app-container-scale, 1));
   }
   .add-series-card {
     background: #fff;
@@ -1783,33 +1821,34 @@
   .team-modal {
     position: fixed;
     inset: 0;
-    z-index: 1000;
+    z-index: 9100;
     display: grid;
     place-items: center;
-    padding: 14px;
+    padding: clamp(18px, 4vw, 34px);
     background: rgba(28, 25, 23, 0.34);
     backdrop-filter: blur(2px);
+    zoom: calc(1 / var(--app-container-scale, 1));
   }
   .team-modal[hidden] { 
     display: none; 
   }
 
   .team-modal-card {
-    width: min(100%, 340px);
+    width: min(94vw, 430px);
     display: grid;
-    gap: 7px;
-    border-radius: 18px;
+    gap: 11px;
+    border-radius: 20px;
     background: #ffffff !important;
     border: 1px solid rgba(0, 0, 0, 0.12) !important;
-    padding: 12px;
-    box-shadow: 0 20px 40px rgba(28, 25, 23, 0.35) !important;
+    padding: 18px;
+    box-shadow: 0 20px 44px rgba(28, 25, 23, 0.35) !important;
   }
 
   .team-modal-title {
-    font-size: 14px;
+    font-size: 16px;
     font-weight: 900;
     color: var(--stone-900);
-    padding: 2px 2px 4px;
+    padding: 2px 2px 6px;
   }
 
   .team-join-input,
@@ -1830,7 +1869,7 @@
   .team-modal-actions {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 6px;
+    gap: 8px;
   }
   .team-join-btn.muted {
     color: var(--stone-600);
@@ -1840,9 +1879,9 @@
 
   .team-modal-copy {
     color: var(--stone-600);
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 800;
-    line-height: 1.35;
+    line-height: 1.45;
     padding: 0 2px;
   }
   .team-modal-detail-list {
@@ -1875,26 +1914,28 @@
     grid-template-columns: 1fr;
   }
   .team-modal-actions.three {
-    grid-template-columns: 1fr 1fr;
-  }
-  .team-modal-actions.three .team-join-btn:first-child {
-    grid-column: 1 / -1;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
   .team-danger-link {
+    justify-self: end;
+    width: auto;
+    min-width: 0;
     border: 0;
-    background: transparent;
-    color: var(--amber-900);
+    border-radius: 12px;
+    background: #fee2e2;
+    color: #991b1b;
     font-size: 12px;
     line-height: 1;
     font-weight: 900;
-    text-align: left;
-    padding: 8px 2px 2px;
+    text-align: center;
+    padding: 10px 12px;
     cursor: pointer;
+    box-shadow: inset 0 0 0 1px rgba(153, 27, 27, 0.18);
   }
   .team-modal-divider {
     height: 1px;
     background: var(--stone-200);
-    margin: 2px 0;
+    margin: 12px 0 4px;
   }
   .team-confirm-name {
     border: 0;
@@ -1910,8 +1951,12 @@
     min-width: 0;
   }
   .team-join-btn.danger {
-    background: var(--amber-200);
-    color: var(--amber-900);
+    background: #dc2626;
+    color: #ffffff;
+  }
+  .team-join-btn.danger:disabled {
+    background: #fecaca;
+    color: #7f1d1d;
   }
 
   /* Active Team Floating Indicators */
@@ -1993,6 +2038,7 @@
     padding: 14px;
     background: rgba(28, 25, 23, 0.38);
     backdrop-filter: blur(2px);
+    zoom: calc(1 / var(--app-container-scale, 1));
   }
   .conflict-modal[hidden] { 
     display: none; 
@@ -3074,7 +3120,7 @@
 
     <!-- Step 2: Create / Join Team -->
     <div class="ob-page" id="ob-step-2">
-      <div class="ob-card">
+      <div class="ob-card" id="ob-team-card">
         <div class="ob-card-title">Create / Join Team</div>
         <input class="ob-team-input" id="ob-team-name"   placeholder="Team name"  autocomplete="off" />
         <input class="ob-team-input" id="ob-team-code"   placeholder="Team code"  autocomplete="off" />
@@ -3085,7 +3131,11 @@
           <button class="ob-card-btn muted" onclick="obGoStep(1)">Cancel</button>
         </div>
       </div>
-      <button class="ob-skip-link" onclick="obLaunchApp(null)">Skip →</button>
+      <div class="ob-pending-card" id="ob-team-pending" hidden aria-live="polite" aria-busy="true">
+        <div class="ob-pending-spinner" aria-hidden="true"></div>
+        <div class="ob-pending-title" id="ob-team-pending-title">Joining team...</div>
+      </div>
+      <button class="ob-skip-link" id="ob-skip-team" onclick="obLaunchApp(null)">Skip →</button>
     </div>
 
   </div><!-- /onboarding-overlay -->
@@ -3550,30 +3600,20 @@
           <div class="team-modal-copy">This team will be removed from your device.</div>
           <div class="team-modal-copy">Keep a local copy?</div>
           <div class="team-modal-actions three">
-            <button id="cancelLeaveTeamModal" class="team-join-btn muted" type="button">Cancel</button>
             <button id="keepCopyLeaveTeam" class="team-join-btn" type="button">Keep Copy</button>
-            <button id="leaveClearTeam" class="team-join-btn" type="button">Leave &amp; Clear</button>
+            <button id="leaveClearTeam" class="team-join-btn" type="button">Leave</button>
+            <button id="cancelLeaveTeamModal" class="team-join-btn muted" type="button">Cancel</button>
           </div>
           <div class="team-modal-divider" aria-hidden="true"></div>
-          <button id="openDeleteTeamFlow" class="team-danger-link" type="button">Delete team...</button>
-        </div>
-      </div>
-
-      <div class="team-modal" id="deleteTeamInfoModal" hidden>
-        <div class="team-modal-card" role="dialog" aria-modal="true" aria-labelledby="deleteTeamInfoTitle">
-          <div class="team-modal-title" id="deleteTeamInfoTitle">Delete Team?</div>
-          <div class="team-modal-copy">This closes the shared team workspace and removes it from normal joining.</div>
-          <div class="team-modal-copy">Team data may be recoverable for 90 days. Shoot us a message if you want it restored.</div>
-          <div class="team-modal-actions">
-            <button id="cancelDeleteTeamInfo" class="team-join-btn muted" type="button">Cancel</button>
-            <button id="continueDeleteTeam" class="team-join-btn danger" type="button">Continue</button>
-          </div>
+          <button id="openDeleteTeamFlow" class="team-danger-link" type="button">Delete Team</button>
         </div>
       </div>
 
       <div class="team-modal" id="deleteTeamConfirmModal" hidden>
         <div class="team-modal-card" role="dialog" aria-modal="true" aria-labelledby="deleteTeamConfirmTitle">
-          <div class="team-modal-title" id="deleteTeamConfirmTitle">Confirm Delete</div>
+          <div class="team-modal-title" id="deleteTeamConfirmTitle">Delete Team?</div>
+          <div class="team-modal-copy">This closes the shared team workspace and removes it from normal joining.</div>
+          <div class="team-modal-copy">Team data may be recoverable for 90 days. Shoot us a message if you want it restored.</div>
           <div class="team-modal-copy">Type the team name to delete this team:</div>
           <div class="team-modal-detail-list">
             <div class="team-modal-detail-value" id="deleteTeamConfirmName"></div>
@@ -5514,20 +5554,8 @@
       hideTeamModal("leaveTeamModal");
     }
 
-    function openDeleteTeamInfoModal() {
-      closeLeaveTeamModal();
-      const modal = $("deleteTeamInfoModal");
-      if (!modal) return;
-      modal.hidden = false;
-      setTimeout(() => $("continueDeleteTeam")?.focus(), 0);
-    }
-
-    function closeDeleteTeamInfoModal() {
-      hideTeamModal("deleteTeamInfoModal");
-    }
-
     function openDeleteTeamConfirmModal() {
-      closeDeleteTeamInfoModal();
+      closeLeaveTeamModal();
       const modal = $("deleteTeamConfirmModal");
       const input = $("deleteTeamNameInput");
       const confirmButton = $("confirmDeleteTeam");
@@ -5558,7 +5586,6 @@
       clearActiveTeamSession();
       hideTeamJoinPanel();
       closeLeaveTeamModal();
-      closeDeleteTeamInfoModal();
       closeDeleteTeamConfirmModal();
       // Rehydrate working state from the (now cleared or kept) store
       // so the canvas reflects the new local state immediately.
@@ -5615,8 +5642,8 @@
     }
 
     async function performTeamJoin(details, options = {}) {
-      const { teamWasCreated = false } = options || {};
-      if (!details) return;
+      const { teamWasCreated = false, suppressStatus = false, skipInitialSync = false } = options || {};
+      if (!details) return null;
       const { name, code, member } = details;
       const previousTeam = activeTeam ? { ...activeTeam } : null;
 
@@ -5632,40 +5659,54 @@
         if (error) {
           syncDiag("transport: create/join RPC error", { message: error.message, details: error.details, hint: error.hint, code: error.code });
           console.error("Create/join team RPC error:", JSON.stringify(error));
-          showStatus(isTeamDeletedError(error) ? teamDeletedMessage() : (error.message || "Team sync error."));
-          return;
+          if (!suppressStatus) showStatus(isTeamDeletedError(error) ? teamDeletedMessage() : (error.message || "Team sync error."));
+          return null;
         }
 
         if (!data?.ok) {
           syncDiag("transport: create/join rejected", { ...data, attemptedTeam: name, previousTeam: previousTeam?.name || "" });
-          if (isTeamDeletedError(data)) {
-            showStatus(teamDeletedMessage());
-          } else if (previousTeam?.name && sameTeamName(previousTeam.name, name)) {
-            clearActiveTeamSession();
-            showStatus("Team name/code mismatch.");
-          } else if (previousTeam?.name) {
-            showStatus(`Could not join ${name}. Still using ${previousTeam.name}.`);
-          } else {
-            showStatus(data?.message || "Team name/code mismatch.");
+          if (!suppressStatus) {
+            if (isTeamDeletedError(data)) {
+              showStatus(teamDeletedMessage());
+            } else if (previousTeam?.name && sameTeamName(previousTeam.name, name)) {
+              clearActiveTeamSession();
+              showStatus("Team name/code mismatch.");
+            } else if (previousTeam?.name) {
+              showStatus(`Could not join ${name}. Still using ${previousTeam.name}.`);
+            } else {
+              showStatus(data?.message || "Team name/code mismatch.");
+            }
           }
-          return;
+          return null;
         }
 
         syncDiag(data.created ? "lifecycle: team created" : "lifecycle: team joined", { teamName: data.team_name || name });
 
-        activeTeam = {
+        const confirmedTeam = {
           name: data.team_name || name,
           code,
           member: data.member_name || member
         };
+        activeTeam = confirmedTeam;
         saveLocalWorkingState();
         updateTeamDisplay();
         hideTeamJoinPanel();
         closeCreateTeamConfirm();
-        await syncTeamConfirmed({ teamWasCreated: Boolean(data.created || teamWasCreated) });
+
+        setTeamAuthPending(false);
+
+        if (!skipInitialSync) {
+          await syncTeamConfirmed({
+            teamWasCreated: Boolean(data.created || teamWasCreated),
+            teamOverride: confirmedTeam,
+            suppressStatus
+          });
+        }
+        return confirmedTeam;
       } catch (error) {
         console.error("Create/join team failed:", JSON.stringify(error));
-        showStatus(isTeamDeletedError(error) ? teamDeletedMessage() : (error?.message || "Team failed."));
+        if (!suppressStatus) showStatus(isTeamDeletedError(error) ? teamDeletedMessage() : (error?.message || "Team failed."));
+        return null;
       } finally {
         setTeamAuthPending(false);
       }
@@ -5711,7 +5752,8 @@
         }
 
         if (data?.status === "team_deleted" || isTeamDeletedError(data)) {
-          showStatus(teamDeletedMessage());
+          setTeamAuthPending(false);
+          openCreateTeamConfirm({ name, code, member, teamWasDeleted: true });
           return;
         }
 
@@ -6334,18 +6376,19 @@
     // ── Main sync entry point ────────────────────────────────────────
 
     async function syncTeamConfirmed(options = {}) {
-      const { teamWasCreated = false } = options || {};
+      const { teamWasCreated = false, teamOverride = null, suppressStatus = false } = options || {};
+      const syncTeam = teamOverride || activeTeam;
       clearSyncDiag();
-      syncDiag("lifecycle: sync started");
+      syncDiag("lifecycle: sync started", { hasOverride: Boolean(teamOverride), hasTeam: Boolean(syncTeam?.name) });
 
-      if (teamAuthPending) {
+      if (teamAuthPending && !teamOverride) {
         showStatus("Finish team verification before syncing.");
-        return;
+        return false;
       }
 
-      if (!activeTeam?.name || !activeTeam?.code || !activeTeam?.member) {
+      if (!syncTeam?.name || !syncTeam?.code || !syncTeam?.member) {
         showTeamJoinPanel();
-        return;
+        return false;
       }
 
       ensureDefaultSeriesAvailable();
@@ -6362,9 +6405,9 @@
       }
 
       try {
-        showStatus("Syncing…");
+        if (!suppressStatus) showStatus("Syncing…");
 
-        const teamKey = await teamKeyFor(activeTeam.name, activeTeam.code);
+        const teamKey = await teamKeyFor(syncTeam.name, syncTeam.code);
 
         const syncSessionDeletedNames = new Set();
 
@@ -6380,7 +6423,7 @@
             });
           }
           const diff = computeSyncDiff(seriesStore, deletedSeriesSet(), rows, {
-            selfMember: activeTeam.member,
+            selfMember: syncTeam.member,
             justDeleted: syncSessionDeletedNames,
             resolvedKeepSet: resolvedKeepSet || new Set()
           });
@@ -6417,7 +6460,7 @@
             if (window.__ppDiag) window.__ppDiag.syncFail("aborted by user");
             showStatus("Sync cancelled.");
             render();
-            return;
+            return false;
           }
           resolvedKeepSet = queueResult || new Set();
           await pushResolvedState("conflict-resolution");
@@ -6438,7 +6481,7 @@
           render();
           if (window.__ppDiag) window.__ppDiag.syncFail("conflicts remain after resolution");
           showStatus("Couldn’t sync.");
-          return;
+          return false;
         }
 
         alignWorkingStateToSyncedStore();
@@ -6446,7 +6489,8 @@
         refreshSeriesDropdown();
         render();
         if (window.__ppDiag) window.__ppDiag.syncOk(new Date().toISOString());
-        showStatus(teamWasCreated ? "Team created." : "Synced.");
+        if (!suppressStatus) showStatus(teamWasCreated ? "Team created." : "Synced.");
+        return true;
 
       } catch (error) {
         console.error("Sync failed:", {
@@ -6456,7 +6500,8 @@
           code: error?.code
         });
         if (window.__ppDiag) window.__ppDiag.syncFail(error?.message || "unknown");
-        showStatus(isTeamDeletedError(error) ? teamDeletedMessage() : "Couldn't sync.");
+        if (!suppressStatus) showStatus(isTeamDeletedError(error) ? teamDeletedMessage() : "Couldn't sync.");
+        return false;
       }
     }
 
@@ -7135,7 +7180,7 @@
         } else if (pendingAction.type === "clear-all-series") {
           yes.textContent = "Clear All"; no.textContent = "Cancel"; no.style.display = "";
         } else if (pendingAction.type === "leave-team") {
-          yes.textContent = "Leave & Clear"; no.textContent = "Keep Copy"; no.style.display = "";
+          yes.textContent = "Leave"; no.textContent = "Keep Copy"; no.style.display = "";
         } else if (pendingAction.type === "switch-series") {
           yes.textContent = "Discard"; no.textContent = "Cancel"; no.style.display = "";
         } else if (pendingAction.type === "save-file-dirty") {
@@ -7514,22 +7559,33 @@
       const details = pendingTeamJoin ? { ...pendingTeamJoin } : null;
       if (!details) return;
       closeCreateTeamConfirm();
+      if (details.fromOnboarding) {
+        try {
+          await obJoinConfirmedTeam(details, { teamWasCreated: true });
+        } catch (error) {
+          hideOnboardingPending();
+          if (String(error?.message || '').includes('SYNC_TEAM_TIMEOUT')) {
+            obLaunchApp(null);
+            showStatus('Team created. Sync again from the app.');
+          } else if (String(error?.message || '').includes('JOIN_TEAM_TIMEOUT')) {
+            showOnboardingToast('Could not create team. Try again.');
+          } else {
+            showOnboardingToast(isTeamDeletedError(error) ? teamDeletedMessage() : (error?.message || 'Could not create team. Try again.'));
+          }
+        }
+        return;
+      }
       await performTeamJoin(details, { teamWasCreated: true });
     });
 
     $("cancelLeaveTeamModal").addEventListener("click", closeLeaveTeamModal);
     $("keepCopyLeaveTeam").addEventListener("click", () => leaveTeamFromModal(true));
     $("leaveClearTeam").addEventListener("click", () => leaveTeamFromModal(false));
-    $("openDeleteTeamFlow").addEventListener("click", openDeleteTeamInfoModal);
+    $("openDeleteTeamFlow").addEventListener("click", openDeleteTeamConfirmModal);
 
-    $("cancelDeleteTeamInfo").addEventListener("click", () => {
-      closeDeleteTeamInfoModal();
-      openLeaveTeamModal();
-    });
-    $("continueDeleteTeam").addEventListener("click", openDeleteTeamConfirmModal);
     $("cancelDeleteTeamConfirm").addEventListener("click", () => {
       closeDeleteTeamConfirmModal();
-      openDeleteTeamInfoModal();
+      openLeaveTeamModal();
     });
     $("deleteTeamNameInput").addEventListener("input", () => {
       const typed = String($("deleteTeamNameInput").value || "").trim().toLowerCase();
@@ -7567,7 +7623,6 @@
         if (!$("teamJoinPanel").hidden) hideTeamJoinPanel();
         closeCreateTeamConfirm();
         closeLeaveTeamModal();
-        closeDeleteTeamInfoModal();
         closeDeleteTeamConfirmModal();
         if (!$("addSeriesModal").hidden) closeAddSeriesModal();
         closeSeriesMenu();
@@ -7868,21 +7923,97 @@
       }
     });
 
-    // Continue: validate the onboarding fields, then copy them into the app's real Sync/team inputs and piggyback on the existing Join button path.
-    function obContinue() {
+    const OB_TEAM_PENDING_MIN_MS = 2000;
+    const OB_TEAM_PENDING_TIMEOUT_MS = 10000;
+
+    function obDelay(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    function obWithTimeout(promise, ms, label) {
+      let timer = null;
+      const timeout = new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(label || 'ONBOARDING_TIMEOUT')), ms);
+      });
+      return Promise.race([promise, timeout]).finally(() => {
+        if (timer) clearTimeout(timer);
+      });
+    }
+
+    function showOnboardingPending(message) {
+      const card = document.getElementById('ob-team-card');
+      const pending = document.getElementById('ob-team-pending');
+      const pendingTitle = document.getElementById('ob-team-pending-title');
+      const skip = document.getElementById('ob-skip-team');
+      if (pendingTitle) pendingTitle.textContent = message;
+      if (card) card.hidden = true;
+      if (skip) skip.hidden = true;
+      if (pending) pending.hidden = false;
+    }
+
+    function hideOnboardingPending() {
+      const card = document.getElementById('ob-team-card');
+      const pending = document.getElementById('ob-team-pending');
+      const skip = document.getElementById('ob-skip-team');
+      if (pending) pending.hidden = true;
+      if (card) card.hidden = false;
+      if (skip) skip.hidden = false;
+    }
+
+    async function runOnboardingPendingStage(message, operation, options = {}) {
+      const timeoutMs = Number(options.timeoutMs || OB_TEAM_PENDING_TIMEOUT_MS);
+      showOnboardingPending(message);
+      const started = Date.now();
+      try {
+        return await obWithTimeout(Promise.resolve().then(operation), timeoutMs, options.timeoutLabel || 'ONBOARDING_TIMEOUT');
+      } finally {
+        const elapsed = Date.now() - started;
+        if (elapsed < OB_TEAM_PENDING_MIN_MS) {
+          await obDelay(OB_TEAM_PENDING_MIN_MS - elapsed);
+        }
+      }
+    }
+
+    async function obJoinConfirmedTeam(details, options = {}) {
+      const confirmedTeam = await runOnboardingPendingStage('Joining team...', async () => {
+        return await performTeamJoin(details, {
+          teamWasCreated: Boolean(options.teamWasCreated),
+          suppressStatus: true,
+          skipInitialSync: true
+        });
+      }, { timeoutLabel: 'JOIN_TEAM_TIMEOUT' });
+
+      if (!confirmedTeam) {
+        throw new Error('JOIN_TEAM_FAILED');
+      }
+
+      const syncOk = await runOnboardingPendingStage('Syncing with team...', async () => {
+        return await syncTeamConfirmed({
+          teamWasCreated: Boolean(options.teamWasCreated),
+          teamOverride: confirmedTeam,
+          suppressStatus: true
+        });
+      }, { timeoutLabel: 'SYNC_TEAM_TIMEOUT' });
+
+      obLaunchApp(null);
+      showStatus(syncOk ? 'Team joined.' : 'Team joined. Sync again from the app.');
+      return confirmedTeam;
+    }
+
+    // Continue: validate onboarding fields, confirm/create when needed, then run first team sync before entering the app.
+    async function obContinue() {
       const nameEl = document.getElementById('ob-team-name');
       const codeEl = document.getElementById('ob-team-code');
       const memberEl = document.getElementById('ob-member-name');
       const errorEl = document.getElementById('ob-team-error');
-      const name   = nameEl.value.trim();
-      const code   = codeEl.value.trim();
-      const member = memberEl.value.trim();
+      const name   = normalizeTeamField(nameEl.value).toLowerCase();
+      const code   = normalizeTeamField(codeEl.value).toLowerCase();
+      const member = normalizeTeamField(memberEl.value);
 
       const teamNameInput = document.getElementById('teamNameInput');
       const teamCodeInput = document.getElementById('teamCodeInput');
       const memberNameInput = document.getElementById('memberNameInput');
 
-      // Minimal bridge only: keep the real Sync/team inputs and feedback path as the authority.
       if (teamNameInput) teamNameInput.value = name;
       if (teamCodeInput) teamCodeInput.value = code;
       if (memberNameInput) memberNameInput.value = member;
@@ -7896,28 +8027,51 @@
         return;
       }
 
+      if (navigator.onLine === false) {
+        showOnboardingToast('No connection. Check your network and try again.');
+        return;
+      }
+
       if (errorEl) errorEl.textContent = '';
       document.body.classList.remove('onboarding-toast-active');
 
-      obLaunchApp(null);
+      try {
+        const check = await runOnboardingPendingStage('Joining team...', async () => {
+          return await PitProfileBackend.rpc('profile_v2_check_team', {
+            p_team_name: name,
+            p_team_code: code
+          });
+        }, { timeoutLabel: 'JOIN_TEAM_TIMEOUT' });
 
-      // Poll until the app shell is live and the join button is accessible,
-      // then trigger join — inheriting the full sync-on-join flow.
-      const maxWait = 4000;
-      const interval = 50;
-      let elapsed = 0;
-      const pollForJoin = setInterval(() => {
-        elapsed += interval;
-        const joinButton = document.getElementById('joinSyncTeam');
-        const appLive = document.documentElement.classList.contains('pitprofile-app-view');
-        if (appLive && joinButton) {
-          clearInterval(pollForJoin);
-          joinButton.click();
-        } else if (elapsed >= maxWait) {
-          clearInterval(pollForJoin);
-          showStatus('Could not connect to team. Try joining from the app.');
+        const { data, error } = check || {};
+        if (error) {
+          throw error;
         }
-      }, interval);
+
+        if (data?.status === 'not_found' || data?.status === 'team_deleted' || isTeamDeletedError(data)) {
+          hideOnboardingPending();
+          openCreateTeamConfirm({ name, code, member, fromOnboarding: true, teamWasDeleted: data?.status === 'team_deleted' || isTeamDeletedError(data) });
+          return;
+        }
+
+        if (data?.status === 'code_mismatch' || data?.ok === false) {
+          hideOnboardingPending();
+          showOnboardingToast(data?.message || 'Team name/code mismatch.');
+          return;
+        }
+
+        await obJoinConfirmedTeam({ name, code, member }, { teamWasCreated: false });
+      } catch (error) {
+        hideOnboardingPending();
+        if (String(error?.message || '').includes('SYNC_TEAM_TIMEOUT')) {
+          obLaunchApp(null);
+          showStatus('Team joined. Sync again from the app.');
+        } else if (String(error?.message || '').includes('JOIN_TEAM_TIMEOUT')) {
+          showOnboardingToast('Could not join team. Try again.');
+        } else {
+          showOnboardingToast(isTeamDeletedError(error) ? teamDeletedMessage() : (error?.message || 'Could not join team. Try again.'));
+        }
+      }
     }
 
     // Policy modal: mirrors Jubly's lightweight legal/*.html modal pattern.
@@ -8030,6 +8184,16 @@
       const naturalWrapHeight = currentScale > 0 ? wrapHeight / currentScale : wrapHeight;
       if (!naturalWrapHeight) return;
 
+      // Depth-expanded profiles are allowed to make the page scroll. Do not shrink
+      // the entire app shell just because the rendered pit got taller. The scale
+      // calculation uses a baseline pit height and ignores only the extra depth
+      // growth, preserving readable controls/modals while still fitting the base UI.
+      const pit = document.querySelector('.pit');
+      const naturalPitHeight = pit && currentScale > 0 ? pit.getBoundingClientRect().height / currentScale : 0;
+      const BASE_PIT_SCALE_HEIGHT = 360;
+      const depthExpansionHeight = Math.max(0, naturalPitHeight - BASE_PIT_SCALE_HEIGHT);
+      const scaleBasisWrapHeight = Math.max(BASE_PIT_SCALE_HEIGHT, naturalWrapHeight - depthExpansionHeight);
+
       const appStyle = getComputedStyle(app);
       const appVerticalPadding = numberFromPx(appStyle.paddingTop) + numberFromPx(appStyle.paddingBottom);
       const reservedHeight = topbar.getBoundingClientRect().height + footer.getBoundingClientRect().height + appVerticalPadding + FOOTER_BREATHING_ROOM;
@@ -8073,7 +8237,7 @@
 
       const availableWrapHeight = viewportHeight - reservedHeight;
       const minScale = window.innerWidth >= 700 ? MIN_DESKTOP_SCALE : MIN_MOBILE_SCALE;
-      const nextScale = Math.max(minScale, Math.min(1, availableWrapHeight / naturalWrapHeight));
+      const nextScale = Math.max(minScale, Math.min(1, availableWrapHeight / scaleBasisWrapHeight));
       const readabilityScale = Math.min(1.14, Math.max(1, 1 / Math.max(nextScale, 0.01)));
       root.style.setProperty('--app-container-scale', nextScale.toFixed(3));
       root.style.setProperty('--app-control-readability-scale', readabilityScale.toFixed(3));
