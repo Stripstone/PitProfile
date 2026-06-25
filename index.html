@@ -4140,61 +4140,18 @@
       return new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
     }
 
-    function flushContainerScaleForVisualSettle(reason = "visual-settle") {
-      try {
-        if (resizeTimer) {
-          clearTimeout(resizeTimer);
-          resizeTimer = null;
-        }
-        if (typeof updateContainerScale === "function") {
-          const before = {
-            renderGeneration: pitProfileRenderGeneration,
-            scaleGeneration: pitProfileScaleGeneration
-          };
-          updateContainerScale();
-          ppProbe("visual:scale flush", {
-            reason,
-            changed: pitProfileScaleGeneration !== before.scaleGeneration,
-            before,
-            after: {
-              renderGeneration: pitProfileRenderGeneration,
-              scaleGeneration: pitProfileScaleGeneration
-            }
-          });
-        }
-      } catch (error) {
-        ppProbe("visual:scale flush failed", { reason, message: error?.message || String(error) });
-      }
-    }
-
-    async function waitForVisualQuietFrames(requiredQuietFrames = 3, maxFrames = 24, options = {}) {
+    async function waitForVisualQuietFrames(requiredQuietFrames = 2, maxFrames = 10) {
       let quietFrames = 0;
       let lastRenderGeneration = pitProfileRenderGeneration;
       let lastScaleGeneration = pitProfileScaleGeneration;
-      const limit = Math.max(1, Number(maxFrames) || 24);
-      const required = Math.max(1, Number(requiredQuietFrames) || 3);
-      const flushScale = options.flushScale !== false;
-      const reason = options.reason || "visual-quiet";
+      const limit = Math.max(1, Number(maxFrames) || 10);
+      const required = Math.max(1, Number(requiredQuietFrames) || 2);
 
       for (let frame = 0; frame < limit; frame++) {
         await nextPaintFrame();
-        if (flushScale) flushContainerScaleForVisualSettle(reason);
-        // Give any scale-variable write a real paint opportunity before testing
-        // for quiet. This is what protects against 100cm/50cm profile height
-        // mutations landing after the pending curtain has already cleared.
-        await nextPaintFrame();
-
         const renderStable = pitProfileRenderGeneration === lastRenderGeneration;
         const scaleStable = pitProfileScaleGeneration === lastScaleGeneration;
-        ppProbe("visual quiet frame", {
-          frame: frame + 1,
-          renderStable,
-          scaleStable,
-          quietFrames,
-          renderGeneration: pitProfileRenderGeneration,
-          scaleGeneration: pitProfileScaleGeneration,
-          reason
-        });
+        ppProbe("visual quiet frame", { frame: frame + 1, renderStable, scaleStable, quietFrames });
         if (renderStable && scaleStable) {
           quietFrames += 1;
           if (quietFrames >= required) return true;
@@ -4204,7 +4161,7 @@
           lastScaleGeneration = pitProfileScaleGeneration;
         }
       }
-      ppProbe("visual quiet capped", { requiredQuietFrames: required, maxFrames: limit, reason });
+      ppProbe("visual quiet capped", { requiredQuietFrames: required, maxFrames: limit });
       return false;
     }
 
@@ -4255,28 +4212,16 @@
     async function runWithAppPending(message, operation, options = {}) {
       const enabled = options.enabled !== false;
       const timeoutMs = Number(options.timeoutMs || 10000);
-      const quietFrames = Number(options.quietFrames || 3);
-      const maxFrames = Number(options.maxFrames || 28);
-      const alreadyPending = enabled && document.body.classList.contains("pitprofile-app-pending");
-      let token = null;
-      if (enabled && !alreadyPending) {
-        token = showAppPending(message, timeoutMs);
-      } else if (enabled && alreadyPending) {
-        const label = document.getElementById("pitprofile-app-pending-message");
-        if (label && message) label.textContent = message;
-        ppProbe("pending:nested", { message });
-      }
+      const quietFrames = Number(options.quietFrames || 2);
+      const maxFrames = Number(options.maxFrames || 16);
+      const token = enabled ? showAppPending(message, timeoutMs) : null;
       try {
         if (enabled) await nextPaintFrame();
         const result = await operation();
-        // Do not clear the curtain after merely "a render". Force the scale
-        // calculator to settle and wait until both render and scale generations
-        // have stayed quiet across paint frames. Nested pending work may wait for
-        // quiet, but only the outer owner is allowed to remove the curtain.
-        await waitForVisualQuietFrames(quietFrames, maxFrames, { reason: `pending:${message || "operation"}` });
+        await waitForVisualQuietFrames(quietFrames, maxFrames);
         return result;
       } finally {
-        if (enabled && token !== null) hideAppPending(token);
+        if (enabled) hideAppPending(token);
       }
     }
 
@@ -4551,8 +4496,8 @@
         await syncTeamConfirmed();
         return window.__ppSyncDiagLog ? [...window.__ppSyncDiagLog] : [];
       },
-      async waitForVisualQuiet(requiredQuietFrames = 3, maxFrames = 24) {
-        return waitForVisualQuietFrames(requiredQuietFrames, maxFrames, { reason: "manual-test" });
+      async waitForVisualQuiet(requiredQuietFrames = 2, maxFrames = 10) {
+        return waitForVisualQuietFrames(requiredQuietFrames, maxFrames);
       },
       renderProbe() {
         return window.__pitProfileRenderProbe?.snapshot?.() || [];
@@ -5918,7 +5863,7 @@
         if (keepLocalData) flushWorkingSeriesToStore();
         if (team) await notifyBackendTeamLeave(team, keepLocalData);
         clearActiveTeam(keepLocalData, keepLocalData ? "Left team. Local copy kept." : "Left team.");
-      }, { timeoutMs: 10000, quietFrames: 3, maxFrames: 30 });
+      }, { timeoutMs: 10000, maxFrames: 18 });
     }
 
     function requestLeaveTeam() {
@@ -6069,9 +6014,7 @@
           return;
         }
 
-        await runWithAppPending("Joining team...", async () => {
-          return await performTeamJoin({ name, code, member }, { teamWasCreated: false });
-        }, { timeoutMs: 20000, quietFrames: 3, maxFrames: 30 });
+        await performTeamJoin({ name, code, member }, { teamWasCreated: false });
       } catch (error) {
         console.error("Check team failed:", JSON.stringify(error));
         showStatus(isTeamDeletedError(error) ? teamDeletedMessage() : (error?.message || "Team check failed."));
@@ -6777,7 +6720,7 @@
           if (hasRemoteData) {
             const appliedCleanRemote = await runWithAppPending("Syncing with team...", async () => {
               return applyRemoteRowsAsCleanLocalStore(remoteRows);
-            }, { enabled: !suppressStatus, timeoutMs: 10000, quietFrames: 3, maxFrames: 30 });
+            }, { enabled: !suppressStatus, timeoutMs: 10000, maxFrames: 18 });
             if (appliedCleanRemote) {
               if (window.__ppDiag) window.__ppDiag.syncOk(new Date().toISOString());
               if (!suppressStatus) showStatus(teamWasCreated ? "Team created." : "Synced.");
@@ -6866,7 +6809,7 @@
           saveLocalWorkingState();
           refreshSeriesDropdown();
           render();
-        }, { enabled: !suppressStatus, timeoutMs: 10000, quietFrames: 3, maxFrames: 30 });
+        }, { enabled: !suppressStatus, timeoutMs: 10000, maxFrames: 18 });
         if (window.__ppDiag) window.__ppDiag.syncOk(new Date().toISOString());
         if (!suppressStatus) showStatus(teamWasCreated ? "Team created." : "Synced.");
         return true;
@@ -7492,7 +7435,7 @@
         saveLocalWorkingState();
         refreshSeriesDropdown();
         render();
-      }, { timeoutMs: 10000, quietFrames: 3, maxFrames: 30 });
+      }, { timeoutMs: 10000, maxFrames: 18 });
 
       showStatus(`Backup loaded. Added ${added}. Overrode ${overridden}. Skipped ${skipped}.`);
     }
@@ -7963,9 +7906,7 @@
         }
         return;
       }
-      await runWithAppPending("Creating team...", async () => {
-        return await performTeamJoin(details, { teamWasCreated: true });
-      }, { timeoutMs: 20000, quietFrames: 3, maxFrames: 30 });
+      await performTeamJoin(details, { teamWasCreated: true });
     });
 
     $("cancelLeaveTeamModal").addEventListener("click", closeLeaveTeamModal);
@@ -7996,7 +7937,7 @@
           if (data && data.ok === false) throw new Error(data.message || "Could not delete team.");
           closeDeleteTeamConfirmModal();
           clearActiveTeam(false, "Team deleted.");
-        }, { timeoutMs: 10000, quietFrames: 3, maxFrames: 30 });
+        }, { timeoutMs: 10000, maxFrames: 18 });
       } catch (error) {
         console.error("Delete team failed:", error);
         showStatus(error?.message || "Could not delete team.");
@@ -8239,7 +8180,7 @@
       (async () => {
         await nextPaintFrame();
         try { updateContainerScale(); } catch (_) {}
-        await waitForVisualQuietFrames(3, 30, { reason: "startup-reveal" });
+        await waitForVisualQuietFrames(2, 18);
         finishAppStartupReveal();
       })();
     }
@@ -8390,7 +8331,7 @@
         });
       }, { timeoutLabel: 'SYNC_TEAM_TIMEOUT' });
 
-      await waitForVisualQuietFrames(3, 30, { reason: "onboarding-launch" });
+      await waitForVisualQuietFrames(2, 18);
       hideOnboardingPending();
       obLaunchApp(null);
       showStatus(syncOk ? 'Team joined.' : 'Team joined. Sync again from the app.');
