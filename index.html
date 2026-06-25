@@ -955,6 +955,90 @@
     flex-direction: column; 
     min-height: 100vh; 
   }
+
+
+
+
+  /* Blocking-surface handoff — preserves modal blur between modal-to-modal/commit transitions. */
+  #pitprofile-surface-handoff {
+    position: fixed;
+    inset: 0;
+    z-index: 9000;
+    display: block;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    background: rgba(28, 25, 23, 0.34);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+    transition: opacity 120ms ease, visibility 0s linear 120ms;
+  }
+
+  #pitprofile-surface-handoff.is-visible {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: all;
+    transition: opacity 80ms ease;
+  }
+
+  /* Visual commit curtain — used only while final data/layout commits settle. */
+  #pitprofile-visual-commit-curtain {
+    position: fixed;
+    inset: 0;
+    z-index: 9700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    background: rgba(239, 232, 219, 0.78);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    transition: opacity 180ms ease, visibility 0s linear 180ms;
+  }
+
+  #pitprofile-visual-commit-curtain.is-visible {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: all;
+    transition: opacity 140ms ease;
+  }
+
+  #pitprofile-visual-commit-curtain.is-fading {
+    opacity: 0;
+    visibility: visible;
+    pointer-events: all;
+    transition: opacity 260ms ease;
+  }
+
+  .visual-commit-card {
+    min-width: min(260px, 80vw);
+    border-radius: 18px;
+    padding: 22px 24px;
+    text-align: center;
+    background: rgba(255, 255, 255, 0.88);
+    border: 1px solid rgba(120, 113, 108, 0.22);
+    box-shadow: 0 22px 60px rgba(28, 25, 23, 0.18);
+  }
+
+  .visual-commit-spinner {
+    width: 30px;
+    height: 30px;
+    border-radius: 999px;
+    border: 3px solid rgba(120, 113, 108, 0.28);
+    border-top-color: #1c1917;
+    margin: 0 auto 12px;
+    animation: ob-spin 0.8s linear infinite;
+  }
+
+  .visual-commit-message {
+    font-size: 14px;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+    color: #1c1917;
+  }
   
   /* Shell chrome is hidden until pitprofile-app-view is set on <html>.
      visibility:hidden (not display:none) so elements still participate
@@ -2032,7 +2116,7 @@
   .conflict-modal {
     position: fixed;
     inset: 0;
-    z-index: 1100;
+    z-index: 9100;
     display: grid;
     place-items: center;
     padding: 14px;
@@ -3672,6 +3756,18 @@
     </div>
   </div>
 
+
+
+  <div id="pitprofile-surface-handoff" aria-hidden="true" hidden></div>
+
+
+  <div id="pitprofile-visual-commit-curtain" aria-live="polite" aria-busy="true" aria-hidden="true">
+    <div class="visual-commit-card" role="status">
+      <div class="visual-commit-spinner" aria-hidden="true"></div>
+      <div class="visual-commit-message" id="pitprofile-visual-commit-message">Applying changes...</div>
+    </div>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script>
     const HUE_NUMBERS = [10, 7.5, 5, 2.5];
@@ -3897,7 +3993,9 @@
     }
 
     function ensureSimTeam(db, name, code) {
-      const key = simTeamKey(name, code);
+      const existing = findSimJoinableTeamByNameCode(db, name, code);
+      if (existing) return existing;
+      const key = allocateSimTeamKey(db, name, code);
       if (!db.teams[key]) {
         db.teams[key] = {
           key,
@@ -3920,11 +4018,45 @@
       return db.teams[String(teamKey || "")] || null;
     }
 
+    function simTeamNameEquals(team, teamName) {
+      return normalizeSimName(team?.team_name, "Sim Team").toLowerCase() === normalizeSimName(teamName, "Sim Team").toLowerCase();
+    }
+
+    function simTeamCodeEquals(team, teamCode) {
+      return normalizeSimName(team?.team_code, "SIM").toLowerCase() === normalizeSimName(teamCode, "SIM").toLowerCase();
+    }
+
+    function findSimTeamsByName(db, teamName) {
+      return Object.values(db.teams || {}).filter(team => simTeamNameEquals(team, teamName));
+    }
+
+    function findSimJoinableTeamByName(db, teamName) {
+      return findSimTeamsByName(db, teamName).find(team => team.archive_reason !== "user_deleted") || null;
+    }
+
+    function findSimJoinableTeamByNameCode(db, teamName, teamCode) {
+      return findSimTeamsByName(db, teamName).find(team => team.archive_reason !== "user_deleted" && simTeamCodeEquals(team, teamCode)) || null;
+    }
+
+    function findSimDeletedTeamByNameCode(db, teamName, teamCode) {
+      return findSimTeamsByName(db, teamName).find(team => team.archive_reason === "user_deleted" && simTeamCodeEquals(team, teamCode)) || null;
+    }
+
+    function allocateSimTeamKey(db, name, code) {
+      const base = simTeamKey(name, code);
+      if (!db.teams[base]) return base;
+      if (db.teams[base].archive_reason !== "user_deleted") return base;
+      let i = 1;
+      let key = `${base}_r_${Date.now().toString(36)}_${i}`;
+      while (db.teams[key]) {
+        i += 1;
+        key = `${base}_r_${Date.now().toString(36)}_${i}`;
+      }
+      return key;
+    }
+
     function findSimTeamByName(db, teamName) {
-      const target = normalizeSimName(teamName, "Sim Team").toLowerCase();
-      return Object.values(db.teams || {}).find(team =>
-        normalizeSimName(team?.team_name, "Sim Team").toLowerCase() === target
-      ) || null;
+      return findSimTeamsByName(db, teamName)[0] || null;
     }
 
     function ensureSimMember(team, memberName) {
@@ -4007,6 +4139,225 @@
       return new Promise(resolve => setTimeout(resolve, Math.max(0, Number(ms) || 0)));
     }
 
+    // ── Visual/runtime probe infrastructure ───────────────────────────
+    // Used by ?backend=sim preflight and runtime paint-settling diagnostics.
+    let pitProfileRenderGeneration = 0;
+    let pitProfileScaleGeneration = 0;
+
+    window.__pitProfileRenderProbe = window.__pitProfileRenderProbe || {
+      enabled: true,
+      events: [],
+      clear() { this.events = []; },
+      snapshot(limit = 250) { return this.events.slice(-Math.max(1, Number(limit) || 250)); },
+      generations() {
+        return { renderGeneration: pitProfileRenderGeneration, scaleGeneration: pitProfileScaleGeneration };
+      }
+    };
+
+    function ppProbe(event, data = null) {
+      try {
+        const probe = window.__pitProfileRenderProbe;
+        if (!probe || probe.enabled === false) return;
+        probe.events.push({
+          ts: new Date().toISOString(),
+          event,
+          renderGeneration: pitProfileRenderGeneration,
+          scaleGeneration: pitProfileScaleGeneration,
+          activeSeriesName: typeof activeSeriesName === "undefined" ? null : activeSeriesName,
+          pageIndex: typeof pageIndex === "undefined" ? null : pageIndex,
+          profileCount: Array.isArray(typeof pages === "undefined" ? null : pages) ? pages.length : null,
+          appSettling: document.documentElement.classList.contains("pitprofile-app-settling"),
+          snapshotPending: document.documentElement.classList.contains("pitprofile-visual-snapshot-pending"),
+          data
+        });
+        if (probe.events.length > 500) probe.events.splice(0, probe.events.length - 500);
+      } catch (_) {}
+    }
+
+    function nextPaintFrame() {
+      return new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
+    }
+
+    function waitMs(ms) {
+      return new Promise(resolve => setTimeout(resolve, Math.max(0, Number(ms) || 0)));
+    }
+
+    function forceVisualScaleFlush() {
+      try {
+        if (typeof window.__pitProfileFlushScaleForVisualSettle === "function") {
+          window.__pitProfileFlushScaleForVisualSettle();
+        }
+      } catch (error) {
+        ppProbe("visual quiet scale flush failed", { message: error?.message || String(error) });
+      }
+    }
+
+    async function waitForVisualQuietFrames(requiredQuietFrames = 2, maxFrames = 10) {
+      let quietFrames = 0;
+      let lastRenderGeneration = pitProfileRenderGeneration;
+      let lastScaleGeneration = pitProfileScaleGeneration;
+      const limit = Math.max(1, Number(maxFrames) || 10);
+      const required = Math.max(1, Number(requiredQuietFrames) || 2);
+
+      for (let frame = 0; frame < limit; frame++) {
+        forceVisualScaleFlush();
+        await nextPaintFrame();
+        forceVisualScaleFlush();
+        await nextPaintFrame();
+        const renderStable = pitProfileRenderGeneration === lastRenderGeneration;
+        const scaleStable = pitProfileScaleGeneration === lastScaleGeneration;
+        ppProbe("visual quiet frame", { frame: frame + 1, renderStable, scaleStable, quietFrames });
+        if (renderStable && scaleStable) {
+          quietFrames += 1;
+          if (quietFrames >= required) return true;
+        } else {
+          quietFrames = 0;
+          lastRenderGeneration = pitProfileRenderGeneration;
+          lastScaleGeneration = pitProfileScaleGeneration;
+        }
+      }
+      ppProbe("visual quiet capped", { requiredQuietFrames: required, maxFrames: limit });
+      return false;
+    }
+
+
+    let pitProfileSurfaceHandoffToken = 0;
+    let pitProfileSurfaceHandoffTimer = null;
+
+    function surfaceHandoffEl() {
+      return document.getElementById("pitprofile-surface-handoff");
+    }
+
+    function beginSurfaceHandoff(reason = "handoff", maxMs = 4000) {
+      const token = ++pitProfileSurfaceHandoffToken;
+      const el = surfaceHandoffEl();
+      if (pitProfileSurfaceHandoffTimer) {
+        window.clearTimeout(pitProfileSurfaceHandoffTimer);
+        pitProfileSurfaceHandoffTimer = null;
+      }
+      if (el) {
+        el.hidden = false;
+        el.setAttribute("aria-hidden", "false");
+        void el.offsetHeight;
+        el.classList.add("is-visible");
+      }
+      ppProbe("surface handoff:begin", { token, reason, maxMs });
+      if (maxMs > 0) {
+        pitProfileSurfaceHandoffTimer = window.setTimeout(() => {
+          if (token === pitProfileSurfaceHandoffToken) endSurfaceHandoff("timeout");
+        }, Math.max(250, Number(maxMs) || 4000));
+      }
+      return { token, reason };
+    }
+
+    function endSurfaceHandoff(reason = "next surface") {
+      const el = surfaceHandoffEl();
+      if (pitProfileSurfaceHandoffTimer) {
+        window.clearTimeout(pitProfileSurfaceHandoffTimer);
+        pitProfileSurfaceHandoffTimer = null;
+      }
+      if (el) {
+        el.classList.remove("is-visible");
+        el.setAttribute("aria-hidden", "true");
+        el.hidden = true;
+      }
+      ppProbe("surface handoff:end", { reason, token: pitProfileSurfaceHandoffToken });
+    }
+
+    let pitProfileVisualCommitDepth = 0;
+    let pitProfileVisualCommitToken = 0;
+    const VISUAL_COMMIT_DEFAULT_GRACE_MS = 350;
+    const VISUAL_COMMIT_LARGE_GRACE_MS = 650;
+    const VISUAL_COMMIT_FADE_MS = 280;
+
+    function visualCommitCurtain() {
+      return document.getElementById("pitprofile-visual-commit-curtain");
+    }
+
+    function setVisualCommitMessage(message) {
+      const el = document.getElementById("pitprofile-visual-commit-message");
+      if (el) el.textContent = message || "Applying changes...";
+    }
+
+    function beginVisualCommit(message = "Applying changes...") {
+      const token = ++pitProfileVisualCommitToken;
+      pitProfileVisualCommitDepth += 1;
+      setVisualCommitMessage(message);
+      const curtain = visualCommitCurtain();
+      if (curtain) {
+        endSurfaceHandoff("visual commit");
+        curtain.hidden = false;
+        curtain.setAttribute("aria-hidden", "false");
+        curtain.classList.remove("is-fading");
+        // Force style application before adding the visible class so fade-in is deterministic.
+        void curtain.offsetHeight;
+        curtain.classList.add("is-visible");
+      }
+      ppProbe("visual commit:begin", { token, depth: pitProfileVisualCommitDepth, message });
+      return { token, message, finished: false };
+    }
+
+    async function endVisualCommit(commit, options = {}) {
+      if (!commit || commit.finished) return;
+      commit.finished = true;
+      const quietFrames = Math.max(1, Number(options.quietFrames) || 3);
+      const maxFrames = Math.max(quietFrames, Number(options.maxFrames) || 24);
+      const graceMs = Math.max(0, Number(options.graceMs ?? VISUAL_COMMIT_DEFAULT_GRACE_MS));
+      await waitForVisualQuietFrames(quietFrames, maxFrames);
+      ppProbe("visual commit:grace", { token: commit.token, graceMs, quietFrames, maxFrames });
+      await waitMs(graceMs);
+
+      pitProfileVisualCommitDepth = Math.max(0, pitProfileVisualCommitDepth - 1);
+      ppProbe("visual commit:end requested", { token: commit.token, depth: pitProfileVisualCommitDepth });
+      if (pitProfileVisualCommitDepth > 0) return;
+
+      const curtain = visualCommitCurtain();
+      if (!curtain) return;
+      curtain.classList.remove("is-visible");
+      curtain.classList.add("is-fading");
+      await waitMs(VISUAL_COMMIT_FADE_MS);
+      if (pitProfileVisualCommitDepth === 0) {
+        curtain.classList.remove("is-fading");
+        curtain.setAttribute("aria-hidden", "true");
+        curtain.hidden = true;
+        ppProbe("visual commit:hidden", { token: commit.token });
+      }
+    }
+
+    async function cancelVisualCommit(commit) {
+      if (!commit || commit.finished) return;
+      commit.finished = true;
+      pitProfileVisualCommitDepth = Math.max(0, pitProfileVisualCommitDepth - 1);
+      ppProbe("visual commit:cancel", { token: commit.token, depth: pitProfileVisualCommitDepth });
+      if (pitProfileVisualCommitDepth > 0) return;
+      const curtain = visualCommitCurtain();
+      if (curtain) {
+        curtain.classList.remove("is-visible", "is-fading");
+        curtain.setAttribute("aria-hidden", "true");
+        curtain.hidden = true;
+      }
+    }
+
+    async function withVisualCommit(message, work, options = {}) {
+      const commit = beginVisualCommit(message);
+      // Ensure the curtain has actually painted before mutating the visible app.
+      await nextPaintFrame();
+      try {
+        const result = await work(commit);
+        await endVisualCommit(commit, options);
+        return result;
+      } catch (error) {
+        await cancelVisualCommit(commit);
+        throw error;
+      }
+    }
+
+    function simPurgeAfter(days = 90) {
+      const d = new Date();
+      d.setDate(d.getDate() + Math.max(0, Number(days) || 0));
+      return d.toISOString();
+    }
+
     const PitProfileSimBackend = {
       async rpc(name, params = {}) {
         const db = readSimDb();
@@ -4022,42 +4373,43 @@
 
         try {
           if (name === "profile_v2_team_key") {
-            return { data: simTeamKey(params.p_team_name, params.p_team_code), error: null };
+            const team = findSimJoinableTeamByNameCode(db, params.p_team_name, params.p_team_code);
+            return { data: team?.key || simTeamKey(params.p_team_name, params.p_team_code), error: null };
           }
 
           if (name === "profile_v2_check_team") {
-            const key = simTeamKey(params.p_team_name, params.p_team_code);
-            const existingByName = findSimTeamByName(db, params.p_team_name);
-            if (!existingByName) return { data: { ok: true, status: "not_found", simulated: true }, error: null };
-            if (existingByName.key !== key) {
+            const exactJoinable = findSimJoinableTeamByNameCode(db, params.p_team_name, params.p_team_code);
+            if (exactJoinable) {
+              return { data: { ok: true, status: "can_join", team_name: exactJoinable.team_name, team_key: exactJoinable.key, simulated: true }, error: null };
+            }
+            const joinableByName = findSimJoinableTeamByName(db, params.p_team_name);
+            if (joinableByName && !simTeamCodeEquals(joinableByName, params.p_team_code)) {
               return { data: { ok: false, status: "code_mismatch", error: "TEAM_CODE_MISMATCH", message: "Team name already exists with a different code.", simulated: true }, error: null };
             }
-            if (existingByName.archive_reason === "user_deleted") {
-              return { data: { ok: false, status: "team_deleted", error: "TEAM_DELETED", message: "This team was deleted. Shoot us a message if you want it restored.", simulated: true }, error: null };
-            }
-            return { data: { ok: true, status: "can_join", team_name: existingByName.team_name, team_key: existingByName.key, simulated: true }, error: null };
+            const deletedAvailable = Boolean(findSimDeletedTeamByNameCode(db, params.p_team_name, params.p_team_code));
+            return { data: { ok: true, status: "not_found", deleted_available: deletedAvailable, simulated: true }, error: null };
           }
 
           if (name === "profile_v2_create_or_join_team") {
-            const key = simTeamKey(params.p_team_name, params.p_team_code);
-            const existingByName = findSimTeamByName(db, params.p_team_name);
-            if (existingByName && existingByName.key !== key) {
-              return { data: { ok: false, error: "TEAM_CODE_MISMATCH", message: "Team name already exists with a different code.", team_name: existingByName.team_name, simulated: true }, error: null };
+            const exactJoinable = findSimJoinableTeamByNameCode(db, params.p_team_name, params.p_team_code);
+            const joinableByName = findSimJoinableTeamByName(db, params.p_team_name);
+            if (!exactJoinable && joinableByName && !simTeamCodeEquals(joinableByName, params.p_team_code)) {
+              return { data: { ok: false, error: "TEAM_CODE_MISMATCH", message: "Team name already exists with a different code.", team_name: joinableByName.team_name, simulated: true }, error: null };
             }
-            if (existingByName?.archive_reason === "user_deleted") {
-              return { data: { ok: false, error: "TEAM_DELETED", message: "This team was deleted. Shoot us a message if you want it restored.", simulated: true }, error: null };
-            }
-            const created = !db.teams[key];
-            const team = ensureSimTeam(db, params.p_team_name, params.p_team_code);
+            const team = exactJoinable || ensureSimTeam(db, params.p_team_name, params.p_team_code);
+            const created = !exactJoinable;
+            let restored = false;
             if (team.archive_reason === "abandoned") {
+              restored = true;
               team.archive_reason = null;
               team.archived_at = null;
               team.purge_after = null;
+              Object.values(team.series || {}).forEach(row => { if (row) row.archived_at = null; });
             }
             team.last_seen_at = simNow();
             ensureSimMember(team, params.p_member_name || params.p_author_name || "Sim Member");
             writeSimDb(db);
-            return { data: { ok: true, created, team_name: team.team_name, team_key: key, member_name: params.p_member_name || "", simulated: true }, error: null };
+            return { data: { ok: true, created, restored, team_name: team.team_name, team_key: team.key, member_name: params.p_member_name || "", simulated: true }, error: null };
           }
 
           if (name === "profile_v2_leave_team") {
@@ -4070,7 +4422,7 @@
             if (activeMembers === 0 && team.archive_reason !== "user_deleted") {
               team.archive_reason = "abandoned";
               team.archived_at = simNow();
-              team.purge_after = simNow();
+              team.purge_after = simPurgeAfter(90);
             }
             writeSimDb(db);
             return { data: { ok: true, active_members: activeMembers, archived: activeMembers === 0, simulated: true }, error: null };
@@ -4081,7 +4433,7 @@
             if (!team) return { data: null, error: { message: "Sim team not found", code: "SIM_TEAM_NOT_FOUND" } };
             team.archive_reason = "user_deleted";
             team.archived_at = simNow();
-            team.purge_after = simNow();
+            team.purge_after = simPurgeAfter(90);
             Object.values(team.members || {}).forEach(m => { m.left_at = m.left_at || simNow(); m.last_seen_at = simNow(); });
             writeSimDb(db);
             return { data: { ok: true, deleted: true, message: "Team deleted.", simulated: true }, error: null };
@@ -4140,7 +4492,9 @@
     function currentSimTeamKey() {
       const name = activeTeam?.name || "Sim Team";
       const code = activeTeam?.code || "SIM";
-      return simTeamKey(name, code);
+      const db = readSimDb();
+      const team = findSimJoinableTeamByNameCode(db, name, code);
+      return team?.key || simTeamKey(name, code);
     }
 
     function currentSnapshotPayloadForSim(name = activeSeriesName || contextLabel || "S-01") {
@@ -4204,6 +4558,19 @@
         writeSimDb(db);
         return clone(team);
       },
+      archiveTeam({ teamName = "Sim Team", teamCode = "SIM", reason = "abandoned" } = {}) {
+        const db = readSimDb();
+        const team = findSimJoinableTeamByNameCode(db, teamName, teamCode) || ensureSimTeam(db, teamName, teamCode);
+        team.archive_reason = reason === "user_deleted" ? "user_deleted" : "abandoned";
+        team.archived_at = simNow();
+        team.purge_after = simPurgeAfter(90);
+        Object.values(team.members || {}).forEach(m => { m.left_at = m.left_at || simNow(); m.last_seen_at = simNow(); });
+        writeSimDb(db);
+        return clone(team);
+      },
+      deleteTeam(opts = {}) {
+        return this.archiveTeam(Object.assign({}, opts, { reason: "user_deleted" }));
+      },
       saveAsMember({ teamName = activeTeam?.name || "Sim Team", teamCode = activeTeam?.code || "SIM", member = "Maya", seriesName = "Remote S-01", payload = null } = {}) {
         const db = readSimDb();
         const team = ensureSimTeam(db, teamName, teamCode);
@@ -4255,6 +4622,15 @@
         if (window.__ppSyncDiagLog) window.__ppSyncDiagLog = [];
         await syncTeamConfirmed();
         return window.__ppSyncDiagLog ? [...window.__ppSyncDiagLog] : [];
+      },
+      async waitForVisualQuiet(requiredQuietFrames = 2, maxFrames = 10) {
+        return waitForVisualQuietFrames(requiredQuietFrames, maxFrames);
+      },
+      renderProbe() {
+        return window.__pitProfileRenderProbe?.snapshot?.() || [];
+      },
+      clearRenderProbe() {
+        window.__pitProfileRenderProbe?.clear?.();
       },
       setLocalSeries(name, pages) {
         const p = Array.isArray(pages) ? pages : [pages];
@@ -5535,6 +5911,7 @@
       $("createTeamConfirmCode").textContent = pendingTeamJoin.code;
       $("createTeamConfirmMember").textContent = pendingTeamJoin.member;
       modal.hidden = false;
+      endSurfaceHandoff("create team confirm visible");
       setTimeout(() => $("confirmCreateTeam")?.focus(), 0);
     }
 
@@ -5547,6 +5924,7 @@
       const modal = $("leaveTeamModal");
       if (!modal) return;
       modal.hidden = false;
+      endSurfaceHandoff("leave team modal visible");
       setTimeout(() => $("leaveClearTeam")?.focus(), 0);
     }
 
@@ -5555,6 +5933,7 @@
     }
 
     function openDeleteTeamConfirmModal() {
+      beginSurfaceHandoff("leave modal to delete confirm", 1000);
       closeLeaveTeamModal();
       const modal = $("deleteTeamConfirmModal");
       const input = $("deleteTeamNameInput");
@@ -5564,6 +5943,7 @@
       input.value = "";
       confirmButton.disabled = true;
       modal.hidden = false;
+      endSurfaceHandoff("delete team confirm visible");
       setTimeout(() => input.focus(), 0);
     }
 
@@ -5609,9 +5989,12 @@
 
     async function leaveTeamFromModal(keepLocalData = false) {
       const team = activeTeam ? { ...activeTeam } : null;
-      closeLeaveTeamModal();
-      if (team) await notifyBackendTeamLeave(team, keepLocalData);
-      clearActiveTeam(keepLocalData, keepLocalData ? "Left team. Local copy kept." : "Left team.");
+      await withVisualCommit("Leaving team...", async () => {
+        closeLeaveTeamModal();
+        if (team) await notifyBackendTeamLeave(team, keepLocalData);
+        if (keepLocalData) flushWorkingSeriesToStore();
+        clearActiveTeam(keepLocalData, keepLocalData ? "Left team. Local copy kept." : "Left team.");
+      }, { graceMs: VISUAL_COMMIT_LARGE_GRACE_MS, quietFrames: 3, maxFrames: 28 });
     }
 
     function requestLeaveTeam() {
@@ -5626,6 +6009,7 @@
       $("teamCodeInput").value = activeTeam?.code || $("teamCodeInput").value || "";
       $("memberNameInput").value = activeTeam?.member || $("memberNameInput").value || "";
       panel.hidden = false;
+      endSurfaceHandoff("team join panel visible");
       $("teamNameInput").focus();
     }
 
@@ -5690,17 +6074,24 @@
         activeTeam = confirmedTeam;
         saveLocalWorkingState();
         updateTeamDisplay();
+        beginSurfaceHandoff("team join/create to sync", 6000);
         hideTeamJoinPanel();
         closeCreateTeamConfirm();
 
         setTeamAuthPending(false);
 
         if (!skipInitialSync) {
-          await syncTeamConfirmed({
-            teamWasCreated: Boolean(data.created || teamWasCreated),
-            teamOverride: confirmedTeam,
-            suppressStatus
-          });
+          try {
+            await syncTeamConfirmed({
+              teamWasCreated: Boolean(data.created || teamWasCreated),
+              teamOverride: confirmedTeam,
+              suppressStatus
+            });
+          } finally {
+            endSurfaceHandoff("team sync complete");
+          }
+        } else {
+          endSurfaceHandoff("team join complete without sync");
         }
         return confirmedTeam;
       } catch (error) {
@@ -5845,7 +6236,8 @@
       return isDefaultStarterPageList(pages);
     }
 
-    function applyRemoteRowsAsCleanLocalStore(remoteRows) {
+    function applyRemoteRowsAsCleanLocalStore(remoteRows, options = {}) {
+      const suppressRender = Boolean(options && options.suppressRender);
       const nextStore = {};
       for (const row of collapseRemoteRowsBySeries(remoteRows || [])) {
         if (row.deleted || !row.data || !Array.isArray(row.data.pages)) continue;
@@ -5859,10 +6251,10 @@
       activeSeriesName = names[0];
       contextLabel = activeSeriesName;
       saveDeletedSeriesSet(new Set());
-      applySeriesSnapshot(activeSeriesName, seriesStore[activeSeriesName], { resetToFirstPage: true });
+      applySeriesSnapshot(activeSeriesName, seriesStore[activeSeriesName], { resetToFirstPage: true, suppressRender });
       saveLocalWorkingState();
       refreshSeriesDropdown();
-      render();
+      if (!suppressRender) render();
       syncDiag("state: clean local accepted remote", { series: names.length, active: activeSeriesName });
       return true;
     }
@@ -6130,6 +6522,7 @@
       const actsEl  = $("conflictActions");
 
       modal.hidden   = false;
+      endSurfaceHandoff("conflict modal visible");
       titleEl.textContent = title;
       bodyEl.textContent  = body;
 
@@ -6155,19 +6548,22 @@
       ).join("");
 
       return new Promise(resolve => {
-        function dismiss(choice) {
+        function dismiss(choice, options = {}) {
           actsEl.onclick = null;
           modal.removeEventListener("click", onBackdrop);
           document.removeEventListener("keydown", onKey);
           window.removeEventListener("popstate", onPopState);
-          modal.hidden = true;
+          if (!options.keepSurface) modal.hidden = true;
           resolve(choice);
         }
 
         actsEl.onclick = (e) => {
           const btn = e.target.closest("[data-choice]");
           if (!btn) return;
-          dismiss(btn.dataset.choice);
+          const choice = btn.dataset.choice;
+          // Button choices continue an owned blocking flow. Keep the modal surface
+          // in place until the next modal or visual-commit curtain is visible.
+          dismiss(choice, { keepSurface: choice !== "abort" });
         };
 
         // Click on backdrop (not card) — abort sync
@@ -6413,7 +6809,6 @@
           if (result === "abort") { $("conflictModal").hidden = true; return "abort"; }
         }
       }
-      $("conflictModal").hidden = true;
       if (typeof onComplete === "function") {
         return await onComplete();
       }
@@ -6465,10 +6860,17 @@
           const remoteRows = await pullTeamRows(teamKey);
           const hasRemoteData = collapseRemoteRowsBySeries(remoteRows).some(row => !row.deleted && row.data && Array.isArray(row.data.pages));
           syncDiag("state: clean local join check", { rows: remoteRows.length, hasRemoteData });
-          if (hasRemoteData && applyRemoteRowsAsCleanLocalStore(remoteRows)) {
-            if (window.__ppDiag) window.__ppDiag.syncOk(new Date().toISOString());
-            if (!suppressStatus) showStatus(teamWasCreated ? "Team created." : "Synced.");
-            return true;
+          if (hasRemoteData) {
+            const acceptedRemote = await withVisualCommit("Applying team data...", async () => {
+              const accepted = applyRemoteRowsAsCleanLocalStore(remoteRows, { suppressRender: true });
+              if (accepted) render();
+              return accepted;
+            }, { graceMs: VISUAL_COMMIT_LARGE_GRACE_MS, quietFrames: 3, maxFrames: 28 });
+            if (acceptedRemote) {
+              if (window.__ppDiag) window.__ppDiag.syncOk(new Date().toISOString());
+              if (!suppressStatus) showStatus(teamWasCreated ? "Team created." : "Synced.");
+              return true;
+            }
           }
         }
 
@@ -6515,42 +6917,61 @@
         }
 
         let resolvedKeepSet = new Set();
-        if (conflicts.length) {
-          syncDiag("resolution: conflict queue", { count: conflicts.length });
-          const queueResult = await runConflictQueue(conflicts, async () => {});
-          if (queueResult === "abort") {
-            syncDiag("lifecycle: sync aborted by user");
-            if (window.__ppDiag) window.__ppDiag.syncFail("aborted by user");
-            showStatus("Sync cancelled.");
+        let syncCommit = null;
+        let syncCommitClosed = false;
+        try {
+          if (conflicts.length) {
+            syncDiag("resolution: conflict queue", { count: conflicts.length });
+            const queueResult = await runConflictQueue(conflicts, async () => {});
+            if (queueResult === "abort") {
+              syncDiag("lifecycle: sync aborted by user");
+              if (window.__ppDiag) window.__ppDiag.syncFail("aborted by user");
+              showStatus("Sync cancelled.");
+              $("conflictModal").hidden = true;
+              render();
+              return false;
+            }
+            resolvedKeepSet = queueResult || new Set();
+            // The final conflict choice has been made. From here to final paint,
+            // never expose a naked app frame.
+            syncCommit = beginVisualCommit("Syncing...");
+            await nextPaintFrame();
+            $("conflictModal").hidden = true;
+            await pushResolvedState("conflict-resolution");
+          } else {
+            syncCommit = beginVisualCommit("Syncing...");
+            await nextPaintFrame();
+            await pushResolvedState(autoMerge.length ? "auto-merge" : "initial");
+          }
+
+          const verify = await pullAndDiff("verify", resolvedKeepSet);
+          if (verify.autoMerge.length) {
+            applySyncAutoMerges(verify.autoMerge);
+            await pushResolvedState("verify-auto-merge");
+          }
+
+          if (verify.conflicts.length) {
+            syncDiag("resolution: conflicts remain after verify", { count: verify.conflicts.length });
+            saveLocalWorkingState();
+            refreshSeriesDropdown();
             render();
+            if (window.__ppDiag) window.__ppDiag.syncFail("conflicts remain after resolution");
+            showStatus("Couldn’t sync.");
+            if (syncCommit) await cancelVisualCommit(syncCommit);
+            syncCommitClosed = true;
             return false;
           }
-          resolvedKeepSet = queueResult || new Set();
-          await pushResolvedState("conflict-resolution");
-        } else {
-          await pushResolvedState(autoMerge.length ? "auto-merge" : "initial");
-        }
 
-        const verify = await pullAndDiff("verify", resolvedKeepSet);
-        if (verify.autoMerge.length) {
-          applySyncAutoMerges(verify.autoMerge);
-          await pushResolvedState("verify-auto-merge");
-        }
-
-        if (verify.conflicts.length) {
-          syncDiag("resolution: conflicts remain after verify", { count: verify.conflicts.length });
+          alignWorkingStateToSyncedStore();
           saveLocalWorkingState();
           refreshSeriesDropdown();
           render();
-          if (window.__ppDiag) window.__ppDiag.syncFail("conflicts remain after resolution");
-          showStatus("Couldn’t sync.");
-          return false;
+          await endVisualCommit(syncCommit, { graceMs: VISUAL_COMMIT_LARGE_GRACE_MS, quietFrames: 3, maxFrames: 28 });
+          syncCommitClosed = true;
+        } catch (syncError) {
+          if (!syncCommitClosed && syncCommit) await cancelVisualCommit(syncCommit);
+          throw syncError;
         }
-
-        alignWorkingStateToSyncedStore();
-        saveLocalWorkingState();
-        refreshSeriesDropdown();
-        render();
         if (window.__ppDiag) window.__ppDiag.syncOk(new Date().toISOString());
         if (!suppressStatus) showStatus(teamWasCreated ? "Team created." : "Synced.");
         return true;
@@ -6610,7 +7031,7 @@
       if (dirtySeries) syncDiag("state: dirty cleared by applySeriesSnapshot");
       dirtySeries = false;
       pendingAction = null;
-      render();
+      if (!Boolean(options && options.suppressRender)) render();
       return true;
     }
 
@@ -7101,10 +7522,7 @@
       });
 
       if (choice === "abort") return "abort";
-      if (choice === "override") {
-        seriesStore[name] = backupSnapshot;
-        return "override";
-      }
+      if (choice === "override") return "override";
       return "skip";
     }
 
@@ -7138,14 +7556,10 @@
         if (intro === "abort") return;
       }
 
-      let added = 0;
+      let added = additions.length;
       let overridden = 0;
       let skipped = identical.length;
-
-      for (const name of additions) {
-        seriesStore[name] = imported[name];
-        added += 1;
-      }
+      const overrides = [];
 
       for (let i = 0; i < conflicts.length; i++) {
         const name = conflicts[i];
@@ -7156,22 +7570,35 @@
           render();
           return;
         }
-        if (result === "override") overridden += 1;
-        else skipped += 1;
+        if (result === "override") {
+          overrides.push(name);
+          overridden += 1;
+        } else {
+          skipped += 1;
+        }
       }
 
-      const active = normalized.active && seriesStore[normalized.active]
-        ? normalized.active
-        : (activeSeriesName && seriesStore[activeSeriesName] ? activeSeriesName : Object.keys(seriesStore).sort(naturalSeriesSort)[0]);
+      await withVisualCommit("Applying backup...", async () => {
+        $("conflictModal").hidden = true;
+        for (const name of additions) {
+          seriesStore[name] = imported[name];
+        }
+        for (const name of overrides) {
+          seriesStore[name] = imported[name];
+        }
 
-      if (active) {
-        applySeriesSnapshot(active, seriesStore[active], { resetToFirstPage: true });
-      } else {
+        const active = normalized.active && seriesStore[normalized.active]
+          ? normalized.active
+          : (activeSeriesName && seriesStore[activeSeriesName] ? activeSeriesName : Object.keys(seriesStore).sort(naturalSeriesSort)[0]);
+
+        if (active) {
+          applySeriesSnapshot(active, seriesStore[active], { resetToFirstPage: true, suppressRender: true });
+        }
+        saveLocalWorkingState();
         refreshSeriesDropdown();
         render();
-      }
+      }, { graceMs: VISUAL_COMMIT_LARGE_GRACE_MS, quietFrames: 3, maxFrames: 28 });
 
-      saveLocalWorkingState();
       showStatus(`Backup loaded. Added ${added}. Overrode ${overridden}. Skipped ${skipped}.`);
     }
 
@@ -7400,6 +7827,8 @@
 
 
     function render() {
+      pitProfileRenderGeneration += 1;
+      ppProbe("render:start");
       const current = page();
       bindTopBarInputs(current);
       bindProfileJumpInput(current);
@@ -7413,6 +7842,7 @@
       renderProfile(current);
       renderRenderDepth();
       renderRows(current);
+      ppProbe("render:end");
       queuePitProfileVisualSnapshotCapture();
     }
 
@@ -7487,7 +7917,9 @@
       }
       else if (pendingAction.type === "leave-team") {
         pendingAction = null;
-        clearActiveTeam();
+        await withVisualCommit("Leaving team...", async () => {
+          clearActiveTeam(false);
+        }, { graceMs: VISUAL_COMMIT_LARGE_GRACE_MS, quietFrames: 3, maxFrames: 28 });
       }
       else if (pendingAction.type === "switch-series") {
         confirmSwitchSeries();
@@ -7544,7 +7976,10 @@
       if (pendingAction?.type === "leave-team") {
         // "No" on the leave prompt means "Keep Copy" — leave but retain local data
         pendingAction = null;
-        clearActiveTeam(true);
+        await withVisualCommit("Leaving team...", async () => {
+          flushWorkingSeriesToStore();
+          clearActiveTeam(true);
+        }, { graceMs: VISUAL_COMMIT_LARGE_GRACE_MS, quietFrames: 3, maxFrames: 28 });
         return;
       }
 
@@ -7621,8 +8056,8 @@
     $("confirmCreateTeam").addEventListener("click", async () => {
       const details = pendingTeamJoin ? { ...pendingTeamJoin } : null;
       if (!details) return;
-      closeCreateTeamConfirm();
       if (details.fromOnboarding) {
+        closeCreateTeamConfirm();
         try {
           await obJoinConfirmedTeam(details, { teamWasCreated: true });
         } catch (error) {
@@ -7647,6 +8082,7 @@
     $("openDeleteTeamFlow").addEventListener("click", openDeleteTeamConfirmModal);
 
     $("cancelDeleteTeamConfirm").addEventListener("click", () => {
+      beginSurfaceHandoff("delete confirm to leave modal", 1000);
       closeDeleteTeamConfirmModal();
       openLeaveTeamModal();
     });
@@ -7659,24 +8095,28 @@
       if ($("confirmDeleteTeam").disabled || !activeTeam?.name) return;
       const team = { ...activeTeam };
       try {
-        const teamKey = await teamKeyFor(team.name, team.code);
-        const { data, error } = await PitProfileBackend.rpc("profile_v2_delete_team", {
-          p_team_key: teamKey,
-          p_member_name: team.member
-        });
-        if (error) {
-          showStatus(error.message || "Could not delete team.");
-          return;
-        }
-        if (data && data.ok === false) {
-          showStatus(data.message || "Could not delete team.");
-          return;
-        }
-        closeDeleteTeamConfirmModal();
-        clearActiveTeam(false, "Team deleted.");
+        await withVisualCommit("Deleting team...", async () => {
+          const teamKey = await teamKeyFor(team.name, team.code);
+          const { data, error } = await PitProfileBackend.rpc("profile_v2_delete_team", {
+            p_team_key: teamKey,
+            p_member_name: team.member
+          });
+          if (error) {
+            showStatus(error.message || "Could not delete team.");
+            throw new Error("DELETE_TEAM_ABORTED");
+          }
+          if (data && data.ok === false) {
+            showStatus(data.message || "Could not delete team.");
+            throw new Error("DELETE_TEAM_ABORTED");
+          }
+          closeDeleteTeamConfirmModal();
+          clearActiveTeam(false, "Team deleted.");
+        }, { graceMs: VISUAL_COMMIT_LARGE_GRACE_MS, quietFrames: 3, maxFrames: 28 });
       } catch (error) {
-        console.error("Delete team failed:", error);
-        showStatus(error?.message || "Could not delete team.");
+        if (error?.message !== "DELETE_TEAM_ABORTED") {
+          console.error("Delete team failed:", error);
+          showStatus(error?.message || "Could not delete team.");
+        }
       }
     });
 
@@ -7894,6 +8334,7 @@
     }
 
     function finishAppStartupReveal() {
+      ppProbe("startup:reveal");
       const root = document.documentElement;
       root.classList.remove('pitprofile-app-settling', 'pitprofile-visual-snapshot-pending');
       if (typeof confirmSeriesSelectLabelReady === 'function') confirmSeriesSelectLabelReady();
@@ -7904,17 +8345,17 @@
       window.setTimeout(() => root.classList.remove('pitprofile-app-ready'), 240);
     }
 
-    function settleAppContentAfterStartup() {
+    async function settleAppContentAfterStartup() {
+      ppProbe("startup:settle scheduled");
       const root = document.documentElement;
       if (!root.classList.contains('pitprofile-app-settling') && !root.classList.contains('pitprofile-visual-snapshot-pending')) return;
 
-      // Wait for saved state restoration, generated render markup, footer parsing,
-      // and a short paint-settle window before revealing the live value-bearing app.
-      window.requestAnimationFrame(() => {
-        window.requestAnimationFrame(() => {
-          window.setTimeout(finishAppStartupReveal, root.classList.contains('pitprofile-visual-snapshot-pending') ? 80 : 220);
-        });
-      });
+      // Reveal the live app only after render and scale/layout generations stop moving.
+      // This replaces the fixed timer that could reveal the shell before 100cm/50cm
+      // profile-scale settling was finished.
+      await waitForVisualQuietFrames(3, 28);
+      await waitMs(VISUAL_COMMIT_DEFAULT_GRACE_MS);
+      finishAppStartupReveal();
     }
 
     function resumeAppViewIfNeeded() {
@@ -8309,9 +8750,30 @@
       const minScale = window.innerWidth >= 700 ? MIN_DESKTOP_SCALE : MIN_MOBILE_SCALE;
       const nextScale = Math.max(minScale, Math.min(1, availableWrapHeight / scaleBasisWrapHeight));
       const readabilityScale = Math.min(1.14, Math.max(1, 1 / Math.max(nextScale, 0.01)));
-      root.style.setProperty('--app-container-scale', nextScale.toFixed(3));
-      root.style.setProperty('--app-control-readability-scale', readabilityScale.toFixed(3));
+      const nextScaleText = nextScale.toFixed(3);
+      const readabilityScaleText = readabilityScale.toFixed(3);
+      const previousScaleText = root.style.getPropertyValue('--app-container-scale') || getComputedStyle(root).getPropertyValue('--app-container-scale').trim();
+      const previousReadabilityText = root.style.getPropertyValue('--app-control-readability-scale') || getComputedStyle(root).getPropertyValue('--app-control-readability-scale').trim();
+      if (previousScaleText !== nextScaleText || previousReadabilityText !== readabilityScaleText) {
+        pitProfileScaleGeneration += 1;
+        ppProbe("scale:update", {
+          previousScale: previousScaleText,
+          nextScale: nextScaleText,
+          previousReadability: previousReadabilityText,
+          nextReadability: readabilityScaleText,
+          viewportHeight,
+          availableWrapHeight,
+          scaleBasisWrapHeight
+        });
+      }
+      root.style.setProperty('--app-container-scale', nextScaleText);
+      root.style.setProperty('--app-control-readability-scale', readabilityScaleText);
     }
+
+    window.__pitProfileFlushScaleForVisualSettle = function () {
+      clearTimeout(resizeTimer);
+      updateContainerScale();
+    };
 
     window.addEventListener('resize', scheduleContainerScaleUpdate, { passive: true });
     window.addEventListener('orientationchange', scheduleContainerScaleUpdate, { passive: true });
