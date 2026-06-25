@@ -5729,20 +5729,21 @@
 
     async function leaveTeamFromModal(keepLocalData = false) {
       const team = activeTeam ? { ...activeTeam } : null;
-      // Show pending overlay immediately — hides app state while data mutates.
-      // hideAppPending() is called explicitly after render + paint frame.
       showAppPending('Leaving team…');
       closeLeaveTeamModal();
+      // waitForPaintFrame here guarantees the overlay is composited on screen
+      // BEFORE clearActiveTeam runs its render — render fires behind the overlay.
+      await waitForPaintFrame();
       try {
         if (team) await notifyBackendTeamLeave(team, keepLocalData);
-        // Fix: flush dirty working state into store before clearing/aligning,
-        // so post-sync edits survive a Keep Copy leave.
+        // Flush dirty working state before aligning, so post-sync edits survive Keep Copy.
         if (keepLocalData && dirtySeries && activeSeriesName) {
           seriesStore[activeSeriesName] = snapshotSeries();
           dirtySeries = false;
           ppProbe('leaveTeamFromModal: flushed dirty state before keep-copy', { activeSeriesName });
         }
         clearActiveTeam(keepLocalData, keepLocalData ? "Left team. Local copy kept." : "Left team.");
+        // Second waitForPaintFrame: settled render composited before overlay clears.
         await waitForPaintFrame();
       } finally {
         hideAppPending();
@@ -5992,7 +5993,7 @@
       return result;
     }
 
-    function applyRemoteRowsAsCleanLocalStore(remoteRows) {
+    async function applyRemoteRowsAsCleanLocalStore(remoteRows) {
       const nextStore = {};
       for (const row of collapseRemoteRowsBySeries(remoteRows || [])) {
         if (row.deleted || !row.data || !Array.isArray(row.data.pages)) continue;
@@ -6003,17 +6004,24 @@
       if (!names.length) return false;
 
       ppProbe('remote data apply started (clean local)', { seriesCount: names.length });
-      beginBulkApply('team-sync-clean-local');
-      seriesStore = nextStore;
-      activeSeriesName = names[0];
-      contextLabel = activeSeriesName;
-      saveDeletedSeriesSet(new Set());
-      applySeriesSnapshot(activeSeriesName, seriesStore[activeSeriesName], { resetToFirstPage: true });
-      saveLocalWorkingState();
-      refreshSeriesDropdown();
-      // render() call from applySeriesSnapshot above is suppressed by bulk-apply;
-      // endBulkApply fires the single deferred render.
-      endBulkApply('team-sync-clean-local');
+      showAppPending('Syncing…');
+      await waitForPaintFrame();
+      try {
+        beginBulkApply('team-sync-clean-local');
+        seriesStore = nextStore;
+        activeSeriesName = names[0];
+        contextLabel = activeSeriesName;
+        saveDeletedSeriesSet(new Set());
+        applySeriesSnapshot(activeSeriesName, seriesStore[activeSeriesName], { resetToFirstPage: true });
+        saveLocalWorkingState();
+        refreshSeriesDropdown();
+        // render() call from applySeriesSnapshot above is suppressed by bulk-apply;
+        // endBulkApply fires the single deferred render.
+        endBulkApply('team-sync-clean-local');
+        await waitForPaintFrame();
+      } finally {
+        hideAppPending();
+      }
       ppProbe('remote data apply completed (clean local)', { active: activeSeriesName });
       syncDiag("state: clean local accepted remote", { series: names.length, active: activeSeriesName });
       return true;
@@ -6617,7 +6625,7 @@
           const remoteRows = await pullTeamRows(teamKey);
           const hasRemoteData = collapseRemoteRowsBySeries(remoteRows).some(row => !row.deleted && row.data && Array.isArray(row.data.pages));
           syncDiag("state: clean local join check", { rows: remoteRows.length, hasRemoteData });
-          if (hasRemoteData && applyRemoteRowsAsCleanLocalStore(remoteRows)) {
+          if (hasRemoteData && await applyRemoteRowsAsCleanLocalStore(remoteRows)) {
             if (window.__ppDiag) window.__ppDiag.syncOk(new Date().toISOString());
             if (!suppressStatus) showStatus(teamWasCreated ? "Team created." : "Synced.");
             return true;
@@ -6700,12 +6708,19 @@
         }
 
         ppProbe('remote data apply started (standard sync)', {});
-        beginBulkApply('team-sync-standard');
-        alignWorkingStateToSyncedStore();
-        saveLocalWorkingState();
-        refreshSeriesDropdown();
-        render(); // queued by bulk-apply; deferred until endBulkApply fires it
-        endBulkApply('team-sync-standard');
+        showAppPending('Syncing…');
+        await waitForPaintFrame();
+        try {
+          beginBulkApply('team-sync-standard');
+          alignWorkingStateToSyncedStore();
+          saveLocalWorkingState();
+          refreshSeriesDropdown();
+          render(); // queued by bulk-apply; deferred until endBulkApply fires it
+          endBulkApply('team-sync-standard');
+          await waitForPaintFrame();
+        } finally {
+          hideAppPending();
+        }
         ppProbe('remote data apply completed (standard sync)', { activeSeriesName });
         if (window.__ppDiag) window.__ppDiag.syncOk(new Date().toISOString());
         if (!suppressStatus) showStatus(teamWasCreated ? "Team created." : "Synced.");
@@ -7314,6 +7329,8 @@
       // All user decisions made. Show pending overlay before mutating data.
       showAppPending('Loading backup…');
       ppProbe('backup apply started', { additions: additions.length, conflicts: conflicts.length, identical: identical.length });
+      // Guarantee overlay is composited before any render fires.
+      await waitForPaintFrame();
 
       try {
         beginBulkApply('backup-load');
@@ -7765,7 +7782,14 @@
       }
       else if (pendingAction.type === "leave-team") {
         pendingAction = null;
-        clearActiveTeam();
+        showAppPending('Leaving team…');
+        await waitForPaintFrame();
+        try {
+          clearActiveTeam();
+          await waitForPaintFrame();
+        } finally {
+          hideAppPending();
+        }
       }
       else if (pendingAction.type === "switch-series") {
         confirmSwitchSeries();
@@ -7822,7 +7846,20 @@
       if (pendingAction?.type === "leave-team") {
         // "No" on the leave prompt means "Keep Copy" — leave but retain local data
         pendingAction = null;
-        clearActiveTeam(true);
+        showAppPending('Leaving team…');
+        await waitForPaintFrame();
+        try {
+          // Flush dirty working state so post-sync edits survive Keep Copy.
+          if (dirtySeries && activeSeriesName) {
+            seriesStore[activeSeriesName] = snapshotSeries();
+            dirtySeries = false;
+            ppProbe('confirmNo leave-team: flushed dirty state before keep-copy', { activeSeriesName });
+          }
+          clearActiveTeam(true);
+          await waitForPaintFrame();
+        } finally {
+          hideAppPending();
+        }
         return;
       }
 
@@ -7936,6 +7973,8 @@
     $("confirmDeleteTeam").addEventListener("click", async () => {
       if ($("confirmDeleteTeam").disabled || !activeTeam?.name) return;
       const team = { ...activeTeam };
+      showAppPending('Deleting team…');
+      await waitForPaintFrame();
       try {
         const teamKey = await teamKeyFor(team.name, team.code);
         const { data, error } = await PitProfileBackend.rpc("profile_v2_delete_team", {
@@ -7952,9 +7991,12 @@
         }
         closeDeleteTeamConfirmModal();
         clearActiveTeam(false, "Team deleted.");
+        await waitForPaintFrame();
       } catch (error) {
         console.error("Delete team failed:", error);
         showStatus(error?.message || "Could not delete team.");
+      } finally {
+        hideAppPending();
       }
     });
 
