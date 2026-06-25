@@ -5820,6 +5820,53 @@
       return JSON.stringify(ensurePageShape(snapshot.pages[0])) === JSON.stringify(starterPageTemplate());
     }
 
+    function isDefaultStarterPageList(candidatePages) {
+      if (!Array.isArray(candidatePages) || candidatePages.length !== 1) return false;
+      return JSON.stringify(ensurePageShape(clone(candidatePages[0]))) === JSON.stringify(starterPageTemplate());
+    }
+
+    function isLocalWorkspaceCleanForTeamJoin() {
+      const tombstones = deletedSeriesSet();
+      if (tombstones.size) return false;
+      if (dirtySeries) return false;
+
+      const store = seriesStore && typeof seriesStore === "object" ? seriesStore : {};
+      const names = Object.keys(store);
+
+      if (!names.length) {
+        return isDefaultStarterPageList(pages) || !Array.isArray(pages) || !pages.length;
+      }
+
+      if (names.length !== 1 || names[0] !== "S-01") return false;
+      if (!isDefaultStarterSeries("S-01", store["S-01"])) return false;
+
+      const currentName = String(activeSeriesName || contextLabel || "S-01");
+      if (currentName && currentName !== "S-01") return false;
+      return isDefaultStarterPageList(pages);
+    }
+
+    function applyRemoteRowsAsCleanLocalStore(remoteRows) {
+      const nextStore = {};
+      for (const row of collapseRemoteRowsBySeries(remoteRows || [])) {
+        if (row.deleted || !row.data || !Array.isArray(row.data.pages)) continue;
+        nextStore[row.series_name] = seriesPayload(row.series_name, row.data);
+      }
+
+      const names = Object.keys(nextStore).sort(naturalSeriesSort);
+      if (!names.length) return false;
+
+      seriesStore = nextStore;
+      activeSeriesName = names[0];
+      contextLabel = activeSeriesName;
+      saveDeletedSeriesSet(new Set());
+      applySeriesSnapshot(activeSeriesName, seriesStore[activeSeriesName], { resetToFirstPage: true });
+      saveLocalWorkingState();
+      refreshSeriesDropdown();
+      render();
+      syncDiag("state: clean local accepted remote", { series: names.length, active: activeSeriesName });
+      return true;
+    }
+
     function pruneDefaultStarterSeriesFromStore() {
       if (!isDefaultStarterSeries("S-01", seriesStore["S-01"])) return false;
       delete seriesStore["S-01"];
@@ -6376,7 +6423,12 @@
     // ── Main sync entry point ────────────────────────────────────────
 
     async function syncTeamConfirmed(options = {}) {
-      const { teamWasCreated = false, teamOverride = null, suppressStatus = false } = options || {};
+      const {
+        teamWasCreated = false,
+        teamOverride = null,
+        suppressStatus = false,
+        acceptRemoteOnCleanLocal = false
+      } = options || {};
       const syncTeam = teamOverride || activeTeam;
       clearSyncDiag();
       syncDiag("lifecycle: sync started", { hasOverride: Boolean(teamOverride), hasTeam: Boolean(syncTeam?.name) });
@@ -6408,6 +6460,17 @@
         if (!suppressStatus) showStatus("Syncing…");
 
         const teamKey = await teamKeyFor(syncTeam.name, syncTeam.code);
+
+        if (acceptRemoteOnCleanLocal && isLocalWorkspaceCleanForTeamJoin()) {
+          const remoteRows = await pullTeamRows(teamKey);
+          const hasRemoteData = collapseRemoteRowsBySeries(remoteRows).some(row => !row.deleted && row.data && Array.isArray(row.data.pages));
+          syncDiag("state: clean local join check", { rows: remoteRows.length, hasRemoteData });
+          if (hasRemoteData && applyRemoteRowsAsCleanLocalStore(remoteRows)) {
+            if (window.__ppDiag) window.__ppDiag.syncOk(new Date().toISOString());
+            if (!suppressStatus) showStatus(teamWasCreated ? "Team created." : "Synced.");
+            return true;
+          }
+        }
 
         const syncSessionDeletedNames = new Set();
 
@@ -7809,6 +7872,10 @@
       document.getElementById('ob-step-' + n).classList.add('active');
       const errorEl = document.getElementById('ob-team-error');
       if (errorEl) errorEl.textContent = '';
+      // Onboarding pending states are transitional only. Never let an old
+      // "Joining team..." / "Syncing with team..." card reappear when
+      // returning to the team-entry page.
+      hideOnboardingPending();
       // Auto-focus first input on step 2
       if (n === 2) setTimeout(() => document.getElementById('ob-team-name').focus(), 50);
     }
@@ -7991,10 +8058,12 @@
         return await syncTeamConfirmed({
           teamWasCreated: Boolean(options.teamWasCreated),
           teamOverride: confirmedTeam,
-          suppressStatus: true
+          suppressStatus: true,
+          acceptRemoteOnCleanLocal: true
         });
       }, { timeoutLabel: 'SYNC_TEAM_TIMEOUT' });
 
+      hideOnboardingPending();
       obLaunchApp(null);
       showStatus(syncOk ? 'Team joined.' : 'Team joined. Sync again from the app.');
       return confirmedTeam;
@@ -8064,6 +8133,7 @@
       } catch (error) {
         hideOnboardingPending();
         if (String(error?.message || '').includes('SYNC_TEAM_TIMEOUT')) {
+          hideOnboardingPending();
           obLaunchApp(null);
           showStatus('Team joined. Sync again from the app.');
         } else if (String(error?.message || '').includes('JOIN_TEAM_TIMEOUT')) {
