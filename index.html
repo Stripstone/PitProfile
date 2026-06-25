@@ -3078,10 +3078,68 @@
     }
   }
 
+
+  /* Runtime visual transaction curtain: hides data/layout mutation until final paint settles. */
+  #pitprofile-app-pending {
+    position: fixed;
+    inset: 0;
+    z-index: 2800;
+    display: none;
+    place-items: center;
+    background: rgba(239, 232, 219, 0.78);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    pointer-events: all;
+  }
+
+  body.pitprofile-app-pending #pitprofile-app-pending { display: grid; }
+
+  .pitprofile-app-pending-card {
+    min-width: 180px;
+    max-width: min(320px, calc(100vw - 48px));
+    padding: 18px 20px;
+    border-radius: 20px;
+    border: 1px solid rgba(120, 113, 108, 0.22);
+    background: rgba(255, 255, 255, 0.82);
+    box-shadow: 0 24px 70px rgba(28, 25, 23, 0.18);
+    display: grid;
+    justify-items: center;
+    gap: 12px;
+    color: var(--stone-900);
+    text-align: center;
+  }
+
+  .pitprofile-app-pending-spinner {
+    width: 30px;
+    height: 30px;
+    border-radius: 999px;
+    border: 3px solid rgba(168, 162, 158, 0.45);
+    border-top-color: rgba(120, 53, 15, 0.88);
+    animation: pitprofile-app-pending-spin 0.85s linear infinite;
+  }
+
+  .pitprofile-app-pending-message {
+    font-size: 13px;
+    line-height: 1.25;
+    font-weight: 850;
+    letter-spacing: -0.01em;
+  }
+
+  @keyframes pitprofile-app-pending-spin { to { transform: rotate(360deg); } }
+
+
   </style>
 </head>
 <body>
   <div id="dvh-sentinel" aria-hidden="true"></div>
+
+  <div id="pitprofile-app-pending" aria-live="polite" aria-busy="true" hidden>
+    <div class="pitprofile-app-pending-card" role="status">
+      <div class="pitprofile-app-pending-spinner" aria-hidden="true"></div>
+      <div id="pitprofile-app-pending-message" class="pitprofile-app-pending-message">Working...</div>
+    </div>
+  </div>
+
 
   <!-- ONBOARDING OVERLAY -->
   <div id="onboarding-overlay">
@@ -3897,7 +3955,9 @@
     }
 
     function ensureSimTeam(db, name, code) {
-      const key = simTeamKey(name, code);
+      const existing = findSimJoinableTeamByNameCode(db, name, code);
+      if (existing) return existing;
+      const key = allocateSimTeamKey(db, name, code);
       if (!db.teams[key]) {
         db.teams[key] = {
           key,
@@ -3920,11 +3980,45 @@
       return db.teams[String(teamKey || "")] || null;
     }
 
+    function simTeamNameEquals(team, teamName) {
+      return normalizeSimName(team?.team_name, "Sim Team").toLowerCase() === normalizeSimName(teamName, "Sim Team").toLowerCase();
+    }
+
+    function simTeamCodeEquals(team, teamCode) {
+      return normalizeSimName(team?.team_code, "SIM").toLowerCase() === normalizeSimName(teamCode, "SIM").toLowerCase();
+    }
+
+    function findSimTeamsByName(db, teamName) {
+      return Object.values(db.teams || {}).filter(team => simTeamNameEquals(team, teamName));
+    }
+
+    function findSimJoinableTeamByName(db, teamName) {
+      return findSimTeamsByName(db, teamName).find(team => team.archive_reason !== "user_deleted") || null;
+    }
+
+    function findSimJoinableTeamByNameCode(db, teamName, teamCode) {
+      return findSimTeamsByName(db, teamName).find(team => team.archive_reason !== "user_deleted" && simTeamCodeEquals(team, teamCode)) || null;
+    }
+
+    function findSimDeletedTeamByNameCode(db, teamName, teamCode) {
+      return findSimTeamsByName(db, teamName).find(team => team.archive_reason === "user_deleted" && simTeamCodeEquals(team, teamCode)) || null;
+    }
+
+    function allocateSimTeamKey(db, name, code) {
+      const base = simTeamKey(name, code);
+      if (!db.teams[base]) return base;
+      if (db.teams[base].archive_reason !== "user_deleted") return base;
+      let i = 1;
+      let key = `${base}_r_${Date.now().toString(36)}_${i}`;
+      while (db.teams[key]) {
+        i += 1;
+        key = `${base}_r_${Date.now().toString(36)}_${i}`;
+      }
+      return key;
+    }
+
     function findSimTeamByName(db, teamName) {
-      const target = normalizeSimName(teamName, "Sim Team").toLowerCase();
-      return Object.values(db.teams || {}).find(team =>
-        normalizeSimName(team?.team_name, "Sim Team").toLowerCase() === target
-      ) || null;
+      return findSimTeamsByName(db, teamName)[0] || null;
     }
 
     function ensureSimMember(team, memberName) {
@@ -4007,6 +4101,136 @@
       return new Promise(resolve => setTimeout(resolve, Math.max(0, Number(ms) || 0)));
     }
 
+    // ── Visual/runtime probe infrastructure ───────────────────────────
+    // Used by ?backend=sim preflight and runtime paint-settling diagnostics.
+    let pitProfileRenderGeneration = 0;
+    let pitProfileScaleGeneration = 0;
+
+    window.__pitProfileRenderProbe = window.__pitProfileRenderProbe || {
+      enabled: true,
+      events: [],
+      clear() { this.events = []; },
+      snapshot(limit = 250) { return this.events.slice(-Math.max(1, Number(limit) || 250)); },
+      generations() {
+        return { renderGeneration: pitProfileRenderGeneration, scaleGeneration: pitProfileScaleGeneration };
+      }
+    };
+
+    function ppProbe(event, data = null) {
+      try {
+        const probe = window.__pitProfileRenderProbe;
+        if (!probe || probe.enabled === false) return;
+        probe.events.push({
+          ts: new Date().toISOString(),
+          event,
+          renderGeneration: pitProfileRenderGeneration,
+          scaleGeneration: pitProfileScaleGeneration,
+          activeSeriesName: typeof activeSeriesName === "undefined" ? null : activeSeriesName,
+          pageIndex: typeof pageIndex === "undefined" ? null : pageIndex,
+          profileCount: Array.isArray(typeof pages === "undefined" ? null : pages) ? pages.length : null,
+          appSettling: document.documentElement.classList.contains("pitprofile-app-settling"),
+          snapshotPending: document.documentElement.classList.contains("pitprofile-visual-snapshot-pending"),
+          data
+        });
+        if (probe.events.length > 500) probe.events.splice(0, probe.events.length - 500);
+      } catch (_) {}
+    }
+
+    function nextPaintFrame() {
+      return new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
+    }
+
+    async function waitForVisualQuietFrames(requiredQuietFrames = 2, maxFrames = 10) {
+      let quietFrames = 0;
+      let lastRenderGeneration = pitProfileRenderGeneration;
+      let lastScaleGeneration = pitProfileScaleGeneration;
+      const limit = Math.max(1, Number(maxFrames) || 10);
+      const required = Math.max(1, Number(requiredQuietFrames) || 2);
+
+      for (let frame = 0; frame < limit; frame++) {
+        await nextPaintFrame();
+        const renderStable = pitProfileRenderGeneration === lastRenderGeneration;
+        const scaleStable = pitProfileScaleGeneration === lastScaleGeneration;
+        ppProbe("visual quiet frame", { frame: frame + 1, renderStable, scaleStable, quietFrames });
+        if (renderStable && scaleStable) {
+          quietFrames += 1;
+          if (quietFrames >= required) return true;
+        } else {
+          quietFrames = 0;
+          lastRenderGeneration = pitProfileRenderGeneration;
+          lastScaleGeneration = pitProfileScaleGeneration;
+        }
+      }
+      ppProbe("visual quiet capped", { requiredQuietFrames: required, maxFrames: limit });
+      return false;
+    }
+
+    let pitProfileAppPendingToken = 0;
+    let pitProfileAppPendingTimer = null;
+
+    function showAppPending(message = "Working...", timeoutMs = 10000) {
+      const token = ++pitProfileAppPendingToken;
+      const overlay = document.getElementById("pitprofile-app-pending");
+      const label = document.getElementById("pitprofile-app-pending-message");
+      if (label) label.textContent = message || "Working...";
+      if (pitProfileAppPendingTimer) {
+        clearTimeout(pitProfileAppPendingTimer);
+        pitProfileAppPendingTimer = null;
+      }
+      if (overlay) overlay.hidden = false;
+      document.body.classList.add("pitprofile-app-pending");
+      ppProbe("pending:show", { token, message });
+      const limit = Math.max(1000, Number(timeoutMs) || 10000);
+      pitProfileAppPendingTimer = setTimeout(() => {
+        if (pitProfileAppPendingToken !== token) return;
+        ppProbe("pending:timeout", { token, message });
+        document.body.classList.remove("pitprofile-app-pending");
+        if (overlay) overlay.hidden = true;
+        pitProfileAppPendingTimer = null;
+        pitProfileAppPendingToken += 1;
+        try { showStatus("This is taking longer than expected."); } catch (_) {}
+      }, limit);
+      return token;
+    }
+
+    function hideAppPending(token = null) {
+      if (token !== null && pitProfileAppPendingToken !== token) {
+        ppProbe("pending:hide ignored stale", { token, current: pitProfileAppPendingToken });
+        return false;
+      }
+      const overlay = document.getElementById("pitprofile-app-pending");
+      if (pitProfileAppPendingTimer) {
+        clearTimeout(pitProfileAppPendingTimer);
+        pitProfileAppPendingTimer = null;
+      }
+      document.body.classList.remove("pitprofile-app-pending");
+      if (overlay) overlay.hidden = true;
+      ppProbe("pending:hide", { token });
+      return true;
+    }
+
+    async function runWithAppPending(message, operation, options = {}) {
+      const enabled = options.enabled !== false;
+      const timeoutMs = Number(options.timeoutMs || 10000);
+      const quietFrames = Number(options.quietFrames || 2);
+      const maxFrames = Number(options.maxFrames || 16);
+      const token = enabled ? showAppPending(message, timeoutMs) : null;
+      try {
+        if (enabled) await nextPaintFrame();
+        const result = await operation();
+        await waitForVisualQuietFrames(quietFrames, maxFrames);
+        return result;
+      } finally {
+        if (enabled) hideAppPending(token);
+      }
+    }
+
+    function simPurgeAfter(days = 90) {
+      const d = new Date();
+      d.setDate(d.getDate() + Math.max(0, Number(days) || 0));
+      return d.toISOString();
+    }
+
     const PitProfileSimBackend = {
       async rpc(name, params = {}) {
         const db = readSimDb();
@@ -4022,42 +4246,43 @@
 
         try {
           if (name === "profile_v2_team_key") {
-            return { data: simTeamKey(params.p_team_name, params.p_team_code), error: null };
+            const team = findSimJoinableTeamByNameCode(db, params.p_team_name, params.p_team_code);
+            return { data: team?.key || simTeamKey(params.p_team_name, params.p_team_code), error: null };
           }
 
           if (name === "profile_v2_check_team") {
-            const key = simTeamKey(params.p_team_name, params.p_team_code);
-            const existingByName = findSimTeamByName(db, params.p_team_name);
-            if (!existingByName) return { data: { ok: true, status: "not_found", simulated: true }, error: null };
-            if (existingByName.key !== key) {
+            const exactJoinable = findSimJoinableTeamByNameCode(db, params.p_team_name, params.p_team_code);
+            if (exactJoinable) {
+              return { data: { ok: true, status: "can_join", team_name: exactJoinable.team_name, team_key: exactJoinable.key, simulated: true }, error: null };
+            }
+            const joinableByName = findSimJoinableTeamByName(db, params.p_team_name);
+            if (joinableByName && !simTeamCodeEquals(joinableByName, params.p_team_code)) {
               return { data: { ok: false, status: "code_mismatch", error: "TEAM_CODE_MISMATCH", message: "Team name already exists with a different code.", simulated: true }, error: null };
             }
-            if (existingByName.archive_reason === "user_deleted") {
-              return { data: { ok: false, status: "team_deleted", error: "TEAM_DELETED", message: "This team was deleted. Shoot us a message if you want it restored.", simulated: true }, error: null };
-            }
-            return { data: { ok: true, status: "can_join", team_name: existingByName.team_name, team_key: existingByName.key, simulated: true }, error: null };
+            const deletedAvailable = Boolean(findSimDeletedTeamByNameCode(db, params.p_team_name, params.p_team_code));
+            return { data: { ok: true, status: "not_found", deleted_available: deletedAvailable, simulated: true }, error: null };
           }
 
           if (name === "profile_v2_create_or_join_team") {
-            const key = simTeamKey(params.p_team_name, params.p_team_code);
-            const existingByName = findSimTeamByName(db, params.p_team_name);
-            if (existingByName && existingByName.key !== key) {
-              return { data: { ok: false, error: "TEAM_CODE_MISMATCH", message: "Team name already exists with a different code.", team_name: existingByName.team_name, simulated: true }, error: null };
+            const exactJoinable = findSimJoinableTeamByNameCode(db, params.p_team_name, params.p_team_code);
+            const joinableByName = findSimJoinableTeamByName(db, params.p_team_name);
+            if (!exactJoinable && joinableByName && !simTeamCodeEquals(joinableByName, params.p_team_code)) {
+              return { data: { ok: false, error: "TEAM_CODE_MISMATCH", message: "Team name already exists with a different code.", team_name: joinableByName.team_name, simulated: true }, error: null };
             }
-            if (existingByName?.archive_reason === "user_deleted") {
-              return { data: { ok: false, error: "TEAM_DELETED", message: "This team was deleted. Shoot us a message if you want it restored.", simulated: true }, error: null };
-            }
-            const created = !db.teams[key];
-            const team = ensureSimTeam(db, params.p_team_name, params.p_team_code);
+            const team = exactJoinable || ensureSimTeam(db, params.p_team_name, params.p_team_code);
+            const created = !exactJoinable;
+            let restored = false;
             if (team.archive_reason === "abandoned") {
+              restored = true;
               team.archive_reason = null;
               team.archived_at = null;
               team.purge_after = null;
+              Object.values(team.series || {}).forEach(row => { if (row) row.archived_at = null; });
             }
             team.last_seen_at = simNow();
             ensureSimMember(team, params.p_member_name || params.p_author_name || "Sim Member");
             writeSimDb(db);
-            return { data: { ok: true, created, team_name: team.team_name, team_key: key, member_name: params.p_member_name || "", simulated: true }, error: null };
+            return { data: { ok: true, created, restored, team_name: team.team_name, team_key: team.key, member_name: params.p_member_name || "", simulated: true }, error: null };
           }
 
           if (name === "profile_v2_leave_team") {
@@ -4070,7 +4295,7 @@
             if (activeMembers === 0 && team.archive_reason !== "user_deleted") {
               team.archive_reason = "abandoned";
               team.archived_at = simNow();
-              team.purge_after = simNow();
+              team.purge_after = simPurgeAfter(90);
             }
             writeSimDb(db);
             return { data: { ok: true, active_members: activeMembers, archived: activeMembers === 0, simulated: true }, error: null };
@@ -4081,7 +4306,7 @@
             if (!team) return { data: null, error: { message: "Sim team not found", code: "SIM_TEAM_NOT_FOUND" } };
             team.archive_reason = "user_deleted";
             team.archived_at = simNow();
-            team.purge_after = simNow();
+            team.purge_after = simPurgeAfter(90);
             Object.values(team.members || {}).forEach(m => { m.left_at = m.left_at || simNow(); m.last_seen_at = simNow(); });
             writeSimDb(db);
             return { data: { ok: true, deleted: true, message: "Team deleted.", simulated: true }, error: null };
@@ -4140,7 +4365,9 @@
     function currentSimTeamKey() {
       const name = activeTeam?.name || "Sim Team";
       const code = activeTeam?.code || "SIM";
-      return simTeamKey(name, code);
+      const db = readSimDb();
+      const team = findSimJoinableTeamByNameCode(db, name, code);
+      return team?.key || simTeamKey(name, code);
     }
 
     function currentSnapshotPayloadForSim(name = activeSeriesName || contextLabel || "S-01") {
@@ -4204,6 +4431,19 @@
         writeSimDb(db);
         return clone(team);
       },
+      archiveTeam({ teamName = "Sim Team", teamCode = "SIM", reason = "abandoned" } = {}) {
+        const db = readSimDb();
+        const team = findSimJoinableTeamByNameCode(db, teamName, teamCode) || ensureSimTeam(db, teamName, teamCode);
+        team.archive_reason = reason === "user_deleted" ? "user_deleted" : "abandoned";
+        team.archived_at = simNow();
+        team.purge_after = simPurgeAfter(90);
+        Object.values(team.members || {}).forEach(m => { m.left_at = m.left_at || simNow(); m.last_seen_at = simNow(); });
+        writeSimDb(db);
+        return clone(team);
+      },
+      deleteTeam(opts = {}) {
+        return this.archiveTeam(Object.assign({}, opts, { reason: "user_deleted" }));
+      },
       saveAsMember({ teamName = activeTeam?.name || "Sim Team", teamCode = activeTeam?.code || "SIM", member = "Maya", seriesName = "Remote S-01", payload = null } = {}) {
         const db = readSimDb();
         const team = ensureSimTeam(db, teamName, teamCode);
@@ -4255,6 +4495,15 @@
         if (window.__ppSyncDiagLog) window.__ppSyncDiagLog = [];
         await syncTeamConfirmed();
         return window.__ppSyncDiagLog ? [...window.__ppSyncDiagLog] : [];
+      },
+      async waitForVisualQuiet(requiredQuietFrames = 2, maxFrames = 10) {
+        return waitForVisualQuietFrames(requiredQuietFrames, maxFrames);
+      },
+      renderProbe() {
+        return window.__pitProfileRenderProbe?.snapshot?.() || [];
+      },
+      clearRenderProbe() {
+        window.__pitProfileRenderProbe?.clear?.();
       },
       setLocalSeries(name, pages) {
         const p = Array.isArray(pages) ? pages : [pages];
@@ -5610,8 +5859,11 @@
     async function leaveTeamFromModal(keepLocalData = false) {
       const team = activeTeam ? { ...activeTeam } : null;
       closeLeaveTeamModal();
-      if (team) await notifyBackendTeamLeave(team, keepLocalData);
-      clearActiveTeam(keepLocalData, keepLocalData ? "Left team. Local copy kept." : "Left team.");
+      await runWithAppPending("Leaving team...", async () => {
+        if (keepLocalData) flushWorkingSeriesToStore();
+        if (team) await notifyBackendTeamLeave(team, keepLocalData);
+        clearActiveTeam(keepLocalData, keepLocalData ? "Left team. Local copy kept." : "Left team.");
+      }, { timeoutMs: 10000, maxFrames: 18 });
     }
 
     function requestLeaveTeam() {
@@ -5845,7 +6097,7 @@
       return isDefaultStarterPageList(pages);
     }
 
-    function applyRemoteRowsAsCleanLocalStore(remoteRows) {
+    function applyRemoteRowsAsCleanLocalStore(remoteRows, options = {}) {
       const nextStore = {};
       for (const row of collapseRemoteRowsBySeries(remoteRows || [])) {
         if (row.deleted || !row.data || !Array.isArray(row.data.pages)) continue;
@@ -5859,10 +6111,10 @@
       activeSeriesName = names[0];
       contextLabel = activeSeriesName;
       saveDeletedSeriesSet(new Set());
-      applySeriesSnapshot(activeSeriesName, seriesStore[activeSeriesName], { resetToFirstPage: true });
+      applySeriesSnapshot(activeSeriesName, seriesStore[activeSeriesName], { resetToFirstPage: true, suppressRender: true });
       saveLocalWorkingState();
       refreshSeriesDropdown();
-      render();
+      if (!options || options.suppressRender !== true) render();
       syncDiag("state: clean local accepted remote", { series: names.length, active: activeSeriesName });
       return true;
     }
@@ -6465,10 +6717,15 @@
           const remoteRows = await pullTeamRows(teamKey);
           const hasRemoteData = collapseRemoteRowsBySeries(remoteRows).some(row => !row.deleted && row.data && Array.isArray(row.data.pages));
           syncDiag("state: clean local join check", { rows: remoteRows.length, hasRemoteData });
-          if (hasRemoteData && applyRemoteRowsAsCleanLocalStore(remoteRows)) {
-            if (window.__ppDiag) window.__ppDiag.syncOk(new Date().toISOString());
-            if (!suppressStatus) showStatus(teamWasCreated ? "Team created." : "Synced.");
-            return true;
+          if (hasRemoteData) {
+            const appliedCleanRemote = await runWithAppPending("Syncing with team...", async () => {
+              return applyRemoteRowsAsCleanLocalStore(remoteRows);
+            }, { enabled: !suppressStatus, timeoutMs: 10000, maxFrames: 18 });
+            if (appliedCleanRemote) {
+              if (window.__ppDiag) window.__ppDiag.syncOk(new Date().toISOString());
+              if (!suppressStatus) showStatus(teamWasCreated ? "Team created." : "Synced.");
+              return true;
+            }
           }
         }
 
@@ -6547,10 +6804,12 @@
           return false;
         }
 
-        alignWorkingStateToSyncedStore();
-        saveLocalWorkingState();
-        refreshSeriesDropdown();
-        render();
+        await runWithAppPending("Syncing with team...", async () => {
+          alignWorkingStateToSyncedStore();
+          saveLocalWorkingState();
+          refreshSeriesDropdown();
+          render();
+        }, { enabled: !suppressStatus, timeoutMs: 10000, maxFrames: 18 });
         if (window.__ppDiag) window.__ppDiag.syncOk(new Date().toISOString());
         if (!suppressStatus) showStatus(teamWasCreated ? "Team created." : "Synced.");
         return true;
@@ -6610,7 +6869,7 @@
       if (dirtySeries) syncDiag("state: dirty cleared by applySeriesSnapshot");
       dirtySeries = false;
       pendingAction = null;
-      render();
+      if (!options || options.suppressRender !== true) render();
       return true;
     }
 
@@ -7101,10 +7360,7 @@
       });
 
       if (choice === "abort") return "abort";
-      if (choice === "override") {
-        seriesStore[name] = backupSnapshot;
-        return "override";
-      }
+      if (choice === "override") return "override";
       return "skip";
     }
 
@@ -7138,14 +7394,8 @@
         if (intro === "abort") return;
       }
 
-      let added = 0;
-      let overridden = 0;
+      const overrideNames = [];
       let skipped = identical.length;
-
-      for (const name of additions) {
-        seriesStore[name] = imported[name];
-        added += 1;
-      }
 
       for (let i = 0; i < conflicts.length; i++) {
         const name = conflicts[i];
@@ -7156,22 +7406,37 @@
           render();
           return;
         }
-        if (result === "override") overridden += 1;
+        if (result === "override") overrideNames.push(name);
         else skipped += 1;
       }
 
-      const active = normalized.active && seriesStore[normalized.active]
-        ? normalized.active
-        : (activeSeriesName && seriesStore[activeSeriesName] ? activeSeriesName : Object.keys(seriesStore).sort(naturalSeriesSort)[0]);
+      let added = 0;
+      let overridden = 0;
 
-      if (active) {
-        applySeriesSnapshot(active, seriesStore[active], { resetToFirstPage: true });
-      } else {
+      await runWithAppPending("Loading backup...", async () => {
+        for (const name of additions) {
+          seriesStore[name] = imported[name];
+          added += 1;
+        }
+
+        for (const name of overrideNames) {
+          seriesStore[name] = imported[name];
+          overridden += 1;
+        }
+
+        const active = normalized.active && seriesStore[normalized.active]
+          ? normalized.active
+          : (activeSeriesName && seriesStore[activeSeriesName] ? activeSeriesName : Object.keys(seriesStore).sort(naturalSeriesSort)[0]);
+
+        if (active) {
+          applySeriesSnapshot(active, seriesStore[active], { resetToFirstPage: true, suppressRender: true });
+        }
+
+        saveLocalWorkingState();
         refreshSeriesDropdown();
         render();
-      }
+      }, { timeoutMs: 10000, maxFrames: 18 });
 
-      saveLocalWorkingState();
       showStatus(`Backup loaded. Added ${added}. Overrode ${overridden}. Skipped ${skipped}.`);
     }
 
@@ -7400,6 +7665,8 @@
 
 
     function render() {
+      pitProfileRenderGeneration += 1;
+      ppProbe("render:start");
       const current = page();
       bindTopBarInputs(current);
       bindProfileJumpInput(current);
@@ -7413,6 +7680,7 @@
       renderProfile(current);
       renderRenderDepth();
       renderRows(current);
+      ppProbe("render:end");
       queuePitProfileVisualSnapshotCapture();
     }
 
@@ -7659,21 +7927,17 @@
       if ($("confirmDeleteTeam").disabled || !activeTeam?.name) return;
       const team = { ...activeTeam };
       try {
-        const teamKey = await teamKeyFor(team.name, team.code);
-        const { data, error } = await PitProfileBackend.rpc("profile_v2_delete_team", {
-          p_team_key: teamKey,
-          p_member_name: team.member
-        });
-        if (error) {
-          showStatus(error.message || "Could not delete team.");
-          return;
-        }
-        if (data && data.ok === false) {
-          showStatus(data.message || "Could not delete team.");
-          return;
-        }
-        closeDeleteTeamConfirmModal();
-        clearActiveTeam(false, "Team deleted.");
+        await runWithAppPending("Deleting team...", async () => {
+          const teamKey = await teamKeyFor(team.name, team.code);
+          const { data, error } = await PitProfileBackend.rpc("profile_v2_delete_team", {
+            p_team_key: teamKey,
+            p_member_name: team.member
+          });
+          if (error) throw new Error(error.message || "Could not delete team.");
+          if (data && data.ok === false) throw new Error(data.message || "Could not delete team.");
+          closeDeleteTeamConfirmModal();
+          clearActiveTeam(false, "Team deleted.");
+        }, { timeoutMs: 10000, maxFrames: 18 });
       } catch (error) {
         console.error("Delete team failed:", error);
         showStatus(error?.message || "Could not delete team.");
@@ -7894,6 +8158,7 @@
     }
 
     function finishAppStartupReveal() {
+      ppProbe("startup:reveal");
       const root = document.documentElement;
       root.classList.remove('pitprofile-app-settling', 'pitprofile-visual-snapshot-pending');
       if (typeof confirmSeriesSelectLabelReady === 'function') confirmSeriesSelectLabelReady();
@@ -7905,16 +8170,19 @@
     }
 
     function settleAppContentAfterStartup() {
+      ppProbe("startup:settle scheduled");
       const root = document.documentElement;
       if (!root.classList.contains('pitprofile-app-settling') && !root.classList.contains('pitprofile-visual-snapshot-pending')) return;
 
-      // Wait for saved state restoration, generated render markup, footer parsing,
-      // and a short paint-settle window before revealing the live value-bearing app.
-      window.requestAnimationFrame(() => {
-        window.requestAnimationFrame(() => {
-          window.setTimeout(finishAppStartupReveal, root.classList.contains('pitprofile-visual-snapshot-pending') ? 80 : 220);
-        });
-      });
+      // Startup has its own layout/scale settling path. Reveal the live shell only
+      // after render and scale generations have gone quiet, rather than after a
+      // fixed timer that can end before the final size paint lands.
+      (async () => {
+        await nextPaintFrame();
+        try { updateContainerScale(); } catch (_) {}
+        await waitForVisualQuietFrames(2, 18);
+        finishAppStartupReveal();
+      })();
     }
 
     function resumeAppViewIfNeeded() {
@@ -8063,6 +8331,7 @@
         });
       }, { timeoutLabel: 'SYNC_TEAM_TIMEOUT' });
 
+      await waitForVisualQuietFrames(2, 18);
       hideOnboardingPending();
       obLaunchApp(null);
       showStatus(syncOk ? 'Team joined.' : 'Team joined. Sync again from the app.');
@@ -8309,8 +8578,24 @@
       const minScale = window.innerWidth >= 700 ? MIN_DESKTOP_SCALE : MIN_MOBILE_SCALE;
       const nextScale = Math.max(minScale, Math.min(1, availableWrapHeight / scaleBasisWrapHeight));
       const readabilityScale = Math.min(1.14, Math.max(1, 1 / Math.max(nextScale, 0.01)));
-      root.style.setProperty('--app-container-scale', nextScale.toFixed(3));
-      root.style.setProperty('--app-control-readability-scale', readabilityScale.toFixed(3));
+      const nextScaleText = nextScale.toFixed(3);
+      const readabilityScaleText = readabilityScale.toFixed(3);
+      const previousScaleText = root.style.getPropertyValue('--app-container-scale') || getComputedStyle(root).getPropertyValue('--app-container-scale').trim();
+      const previousReadabilityText = root.style.getPropertyValue('--app-control-readability-scale') || getComputedStyle(root).getPropertyValue('--app-control-readability-scale').trim();
+      if (previousScaleText !== nextScaleText || previousReadabilityText !== readabilityScaleText) {
+        pitProfileScaleGeneration += 1;
+        ppProbe("scale:update", {
+          previousScale: previousScaleText,
+          nextScale: nextScaleText,
+          previousReadability: previousReadabilityText,
+          nextReadability: readabilityScaleText,
+          viewportHeight,
+          availableWrapHeight,
+          scaleBasisWrapHeight
+        });
+      }
+      root.style.setProperty('--app-container-scale', nextScaleText);
+      root.style.setProperty('--app-control-readability-scale', readabilityScaleText);
     }
 
     window.addEventListener('resize', scheduleContainerScaleUpdate, { passive: true });
@@ -8457,6 +8742,9 @@
       cursor: pointer;
       touch-action: manipulation;
     }
+
+
+
   </style>
 
   <div id="pp-diag-panel" role="region" aria-label="PitProfile diagnostic panel">
