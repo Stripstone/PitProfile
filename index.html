@@ -14,7 +14,18 @@
         var root = document.documentElement;
         root.classList.toggle('pitprofile-network-offline', navigator.onLine === false);
         root.classList.toggle('pitprofile-network-online', navigator.onLine !== false);
-        if (window.history && history.state && history.state.PitProfileView === 'app') {
+        var persistedView = null;
+        try {
+          persistedView = localStorage.getItem('pitprofile-view-state-v1');
+        } catch (viewStorageError) {
+          persistedView = null;
+        }
+        var historyView = (window.history && history.state && history.state.PitProfileView) || null;
+        // A fresh session (new tab, reopened PWA launch) has no history.state at all —
+        // fall back to the last view persisted in localStorage so the app resumes
+        // where the person left off instead of always showing landing.
+        var shouldResumeApp = historyView === 'app' || (!historyView && persistedView === 'app');
+        if (shouldResumeApp) {
           var snapshotRaw = null;
           var saveRaw = null;
 
@@ -8389,9 +8400,35 @@
     }
 
     const PitProfile_VIEW_STATE_KEY = 'PitProfileView';
+    const PitProfile_VIEW_STORAGE_KEY = 'pitprofile-view-state-v1';
+
+    function getPersistedView() {
+      try {
+        return localStorage.getItem(PitProfile_VIEW_STORAGE_KEY);
+      } catch (storageError) {
+        return null;
+      }
+    }
+
+    function setPersistedView(view) {
+      try {
+        localStorage.setItem(PitProfile_VIEW_STORAGE_KEY, view);
+      } catch (storageError) {
+        // localStorage unavailable (private mode, embedded context, etc.) — persistence
+        // across fresh sessions simply won't apply; in-session behavior is unaffected.
+      }
+    }
 
     function isAppHistoryState() {
       return !!(window.history && history.state && history.state[PitProfile_VIEW_STATE_KEY] === 'app');
+    }
+
+    // A brand-new session (new tab, reopened PWA launch, relaunched browser) has no
+    // history.state at all, so fall back to the last view persisted in localStorage.
+    function shouldResumeAppView() {
+      const historyView = window.history && history.state ? history.state[PitProfile_VIEW_STATE_KEY] : null;
+      if (historyView) return historyView === 'app';
+      return getPersistedView() === 'app';
     }
 
     function ensureLandingHistoryState() {
@@ -8428,7 +8465,7 @@
 
     function resumeAppViewIfNeeded() {
       const root = document.documentElement;
-      if (!isAppHistoryState()) {
+      if (!shouldResumeAppView()) {
         root.classList.remove('pitprofile-resume-app', 'pitprofile-app-settling', 'pitprofile-app-ready', 'pitprofile-visual-snapshot-pending', 'pitprofile-series-select-pending', 'pitprofile-app-view');
         return;
       }
@@ -8449,6 +8486,7 @@
     }
 
     function showLanding() {
+      setPersistedView('landing');
       document.documentElement.classList.remove('pitprofile-resume-app', 'pitprofile-app-settling', 'pitprofile-app-ready', 'pitprofile-visual-snapshot-pending', 'pitprofile-series-select-pending', 'pitprofile-app-view');
       const overlay = document.getElementById('onboarding-overlay');
       if (!overlay) return;
@@ -8468,6 +8506,7 @@
 
     function obLaunchApp(e, options = {}) {
       if (e) e.preventDefault();
+      setPersistedView('app');
       ensureLandingHistoryState();
       hideLanding();
 
