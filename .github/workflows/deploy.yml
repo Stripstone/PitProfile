@@ -1,0 +1,15 @@
+name: GitHub Pages deploy disabled
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  disabled:
+    runs-on: ubuntu-latest
+    steps:
+      - name: GitHub Pages disabled
+        run: |
+          echo "GitHub Pages deployment is disabled. PitProfile now deploys through Vercel so /api/app can run feedback mailing."
