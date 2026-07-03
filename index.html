@@ -333,24 +333,56 @@
     font-weight: 500; 
   }
   
+  .ob-entry-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .ob-primary-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 11px;
+    padding: 15px 32px;
+    background: #1c1917;
+    border: 0;
+    border-radius: 17px;
+    font-size: 17px;
+    font-weight: 900;
+    color: #f5f0e6;
+    cursor: pointer;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
+    font-family: inherit;
+    transition: background 0.15s, box-shadow 0.15s, transform 0.1s;
+  }
+  .ob-primary-btn:hover {
+    background: #2c2622;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+  }
+  .ob-primary-btn:active {
+    transform: scale(0.98);
+  }
+
   .ob-enter-btn {
     display: inline-flex;
     align-items: center;
     gap: 11px;
-    padding: 13px 26px;
-    background: rgba(255, 255, 255, 0.92);
+    padding: 11px 22px;
+    background: rgba(255, 255, 255, 0.78);
     border: 0;
-    border-radius: 17px;
-    font-size: 16px;
-    font-weight: 900;
-    color: #1c1917;
+    border-radius: 15px;
+    font-size: 14px;
+    font-weight: 800;
+    color: #57534e;
     cursor: pointer;
-    box-shadow: 0 1px 5px rgba(0, 0, 0, 0.10);
+    box-shadow: 0 1px 5px rgba(0, 0, 0, 0.08);
     font-family: inherit;
     transition: background 0.15s, box-shadow 0.15s;
   }
   .ob-enter-btn:hover { 
     background: #ffffff; 
+    color: #1c1917;
     box-shadow: 0 3px 10px rgba(0, 0, 0, 0.14); 
   }
 
@@ -3181,7 +3213,10 @@
         </div>
         <h1 class="ob-title">PitProfile</h1>
         <p class="ob-tagline">Visualize your data</p>
-        <button class="ob-enter-btn" onclick="obGoStep(2)">✎&nbsp; Enter project details</button>
+        <div class="ob-entry-actions">
+          <button class="ob-primary-btn" onclick="obLaunchApp(event)">→&nbsp; Get Started</button>
+          <button class="ob-enter-btn" onclick="obGoStep(2)">✎&nbsp; Enter project details</button>
+        </div>
       </div>
       <footer class="ob-footer">
         <div class="ob-footer-top">
@@ -8287,6 +8322,39 @@
     }
 
     window.guideNav = function(dir) { guideGoTo(Math.max(0, Math.min(guideTotalSlides-1, guideCurrentSlide+dir))); };
+
+    // Swipe left/right to navigate guide slides on touch devices.
+    (function setupGuideSwipeNav() {
+      var slidePane = document.getElementById('guideSlides');
+      if (!slidePane) return;
+      var touchStartX = 0;
+      var touchStartY = 0;
+      var touchActive = false;
+      var SWIPE_THRESHOLD = 40;
+
+      slidePane.addEventListener('touchstart', function(e) {
+        if (!e.touches || e.touches.length !== 1) return;
+        touchStartX = e.touches[0].clientX;
+        touchStartY = e.touches[0].clientY;
+        touchActive = true;
+      }, { passive: true });
+
+      slidePane.addEventListener('touchend', function(e) {
+        if (!touchActive) return;
+        touchActive = false;
+        var touch = e.changedTouches && e.changedTouches[0];
+        if (!touch) return;
+        var deltaX = touch.clientX - touchStartX;
+        var deltaY = touch.clientY - touchStartY;
+        if (Math.abs(deltaX) < SWIPE_THRESHOLD) return;
+        if (Math.abs(deltaX) <= Math.abs(deltaY)) return; // vertical gesture (e.g. scrolling slide text) — ignore
+        if (deltaX < 0) {
+          guideNav(1); // swipe left -> next slide
+        } else {
+          guideNav(-1); // swipe right -> previous slide
+        }
+      }, { passive: true });
+    })();
 
     window.openGuideModal = function(e) {
       if (e && e.preventDefault) e.preventDefault();
